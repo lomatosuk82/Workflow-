@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jaggaer Workflow Studio</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+  <style>.flow-arrow::after{content:"→";color:#94a3b8;font-size:16px;margin:0 4px;}</style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+const { useState, useMemo, Fragment } = React;
+
+const WORKFLOW_MODULES = {
+  "eProcurement": [
+    { id: "requisition", name: "Requisition Workflow", desc: "Approving requisitions" },
+    { id: "purchaseOrder", name: "Purchase Order Workflow", desc: "Approving purchase orders" },
+    { id: "formRequest", name: "Form Request Workflow", desc: "Quick Quotes, Generic, Procurement, Check requests" },
+    { id: "fulfillment", name: "Fulfillment Workflow", desc: "Internal stockroom requests" },
+  ],
+  "Supplier Management": [
+    { id: "supplierRegistration", name: "Supplier Registration", desc: "Approving supplier registrations" },
+    { id: "supplierReview", name: "Supplier Review", desc: "Approving supplier changes" },
+  ],
+  "Accounts Payable": [
+    { id: "invoice", name: "Invoice Workflow", desc: "Approving invoices" },
+    { id: "receipt", name: "Receipt Workflow", desc: "Approving receipts" },
+  ],
+  "Sourcing": [
+    { id: "sourcingEvent", name: "Sourcing Event Approval", desc: "Approving sourcing events" },
+    { id: "sourcingEval", name: "Sourcing Evaluation", desc: "Evaluating and awarding" },
+  ],
+  "Contract Management": [
+    { id: "contract", name: "Contract Workflow", desc: "Approving contracts" },
+    { id: "contractReview", name: "Contract Internal Review", desc: "Internal contract review" },
+  ],
+  "Savings Management": [{ id: "savingsInitiative", name: "Savings Initiative", desc: "Approving savings" }],
+  "Budget Management": [{ id: "budgetManager", name: "Budget Manager", desc: "Approving budgets" }],
+};
+
+const ACTIVITY_TYPES = ["start", "end", "manual", "automated", "notification"];
+const FSR_TYPES = ["Dummy", "ExplicitFolder", "Department", "MultiElementDynamic", "CustomFieldValue"];
+
+const escapeXml = v => String(v??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+
+const createDefault = () => ({
+  module: "eProcurement", workflowType: "requisition", version: "1", versionDescription: "New Workflow",
+  steps: [], 
+  activities: [
+    { id: "START", name: "START", type: "start", stepName: "", folderName: "", fsr: "Dummy", rule: "", ruleGroup: "", help: "" },
+    { id: "END", name: "END", type: "end", stepName: "", folderName: "", fsr: "Dummy", rule: "", ruleGroup: "", help: "" }
+  ],
+  relationships: [{ id: 1, from: "START", to: "END" }]
+});
+
+const parseXml = (xml) => {
+  const doc = new DOMParser().parseFromString(xml, "text/xml");
+  const state = createDefault();
+  state.workflowType = doc.querySelector("WorkflowType")?.textContent || "requisition";
+  state.version = doc.querySelector("Version")?.textContent || "1";
+  state.versionDescription = doc.querySelector("VersionDescription")?.textContent || "";
+  
+  state.steps = [...doc.querySelectorAll("Step")].map((s,i) => ({
+    id: i+1, name: s.getAttribute("name"), help: s.querySelector("AttrValue")?.textContent || ""
+  }));
+  
+  state.activities = [...doc.querySelectorAll("Activity")].map(a => ({
+    id: a.getAttribute("name"), name: a.getAttribute("name"),
+    type: a.querySelector("ActivityType")?.textContent || "manual",
+    stepName: a.querySelector("StepRef")?.getAttribute("name") || "",
+    folderName: a.querySelector("FolderRef")?.getAttribute("name") || "",
+    fsr: a.querySelector("FolderSelectionRule")?.textContent || "Dummy",
+    rule: a.querySelector("Rule")?.textContent || "",
+    ruleGroup: a.querySelector('[name="RuleGroupInternalName"] AttrValue')?.textContent || "",
+    help: a.querySelector('[name="wfActivityHelp"] AttrValue')?.textContent || ""
+  }));
+  
+  state.relationships = [...doc.querySelectorAll("ActivityRelationship")].map((r,i) => ({
+    id: i+1, from: r.getAttribute("previous"), to: r.getAttribute("next")
+  }));
+  
+  return state;
+};
+
+const buildXml = (s) => {
+  const steps = s.steps.map(st => `  <Step name="${escapeXml(st.name)}">\n    <Attribute name="wfActivityHelp"><AttrValue lang="default">${escapeXml(st.help)}</AttrValue></Attribute>\n  </Step>`).join("\n");
+  const acts = s.activities.map(a => {
+    const sr = a.stepName ? `\n    <StepRef name="${escapeXml(a.stepName)}" />` : "";
+    const fr = a.folderName ? `\n    <FolderRef name="${escapeXml(a.folderName)}" />` : "";
+    const rg = a.ruleGroup ? `\n    <Attribute name="RuleGroupInternalName"><AttrValue lang="default">${escapeXml(a.ruleGroup)}</AttrValue></Attribute>` : "";
+    const hp = a.help ? `\n    <Attribute name="wfActivityHelp"><AttrValue lang="default">${escapeXml(a.help)}</AttrValue></Attribute>` : "";
+    return `  <Activity name="${escapeXml(a.name)}">\n    <ActivityType>${a.type}</ActivityType>${sr}${fr}\n    <Rule>${a.rule ? `<![CDATA[${a.rule}]]>` : ""}</Rule>\n    <FolderSelectionRule>${a.fsr}</FolderSelectionRule>${rg}${hp}\n  </Activity>`;
+  }).join("\n");
+  const rels = s.relationships.map(r => `  <ActivityRelationship previous="${escapeXml(r.from)}" next="${escapeXml(r.to)}" />`).join("\n");
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE ProcessDefinition SYSTEM "https://usertest.sciquest.com/app_docs/dtd/workflow/WorkflowDefinition.dtd">\n<ProcessDefinition>\n  <WorkflowType>${s.workflowType}</WorkflowType>\n  <Usable>true</Usable>\n  <Version>${s.version}</Version>\n  <VersionDescription>${escapeXml(s.versionDescription)}</VersionDescription>\n${steps}\n${acts}\n${rels}\n</ProcessDefinition>`;
+};
+
+const download = (name, text) => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text])); a.download = name; a.click(); };
+
+// Dashboard Component
+const Dashboard = ({ state }) => {
+  const ordered = useMemo(() => {
+    const start = state.activities.find(a => a.type === "start");
+    if (!start) return state.activities;
+    const result = [start], visited = new Set([start.name]);
+    while (result.length < state.activities.length) {
+      const last = result[result.length - 1];
+      const next = state.relationships.find(r => r.from === last.name && !visited.has(r.to));
+      if (next) { const act = state.activities.find(a => a.name === next.to); if (act) { result.push(act); visited.add(act.name); } else break; }
+      else { state.activities.filter(a => !visited.has(a.name)).forEach(a => { result.push(a); visited.add(a.name); }); break; }
+    }
+    return result;
+  }, [state]);
+
+  const typeColor = t => t === "manual" ? "bg-sky-100 border-sky-400 text-sky-800" : t === "automated" ? "bg-emerald-100 border-emerald-400 text-emerald-800" : t === "notification" ? "bg-amber-100 border-amber-400 text-amber-800" : "bg-slate-100 border-slate-400 text-slate-700";
+  const wfInfo = Object.values(WORKFLOW_MODULES).flat().find(w => w.id === state.workflowType) || { name: state.workflowType };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-6">
+      <div className="bg-gradient-to-r from-slate-800 to-slate-700 text-white p-4">
+        <div className="flex justify-between items-center">
+          <div>
+            <div className="text-xs text-slate-300 uppercase">{state.module}</div>
+            <h2 className="text-xl font-bold">{wfInfo.name}</h2>
+            <p className="text-sm text-slate-300">{state.versionDescription} (v{state.version})</p>
+          </div>
+          <div className="text-right">
+            <div className="text-3xl font-bold">{state.steps.length}</div>
+            <div className="text-xs text-slate-300">Steps</div>
+          </div>
+        </div>
+      </div>
+      
+      <div className="p-4 bg-slate-50 border-b">
+        <div className="text-xs font-semibold text-slate-500 uppercase mb-2">Workflow Flow</div>
+        <div className="overflow-x-auto">
+          <div className="flex items-center min-w-max">
+            {ordered.map((a, i) => (
+              <Fragment key={a.id}>
+                <div className={`rounded-lg border-2 px-3 py-2 text-center min-w-[90px] ${typeColor(a.type)}`}>
+                  <div className="font-semibold text-sm">{a.stepName || a.name}</div>
+                  <div className="text-[10px] opacity-70">{a.type}</div>
+                  {a.folderName && <div className="text-[9px] mt-1 bg-white/50 rounded px-1">→ {a.folderName}</div>}
+                </div>
+                {i < ordered.length - 1 && <span className="flow-arrow" />}
+              </Fragment>
+            ))}
+          </div>
+        </div>
+      </div>
+      
+      <div className="p-4 border-b">
+        <div className="text-xs font-semibold text-slate-500 uppercase mb-2">Steps & Approvers</div>
+        {state.steps.length === 0 ? <div className="text-slate-400 text-sm">No steps defined</div> : (
+          <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+            {state.steps.map((s, i) => {
+              const act = state.activities.find(a => a.stepName === s.name);
+              return (
+                <div key={s.id} className="flex gap-2 p-2 bg-slate-50 rounded-lg">
+                  <div className="w-6 h-6 rounded-full bg-sky-500 text-white text-xs flex items-center justify-center font-bold">{i+1}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm truncate">{s.name}</div>
+                    <div className="text-xs text-slate-500 truncate">{act?.folderName || act?.ruleGroup || (act?.fsr === "Department" ? "Department Approvers" : "—")}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+      
+      <div className="p-4 bg-slate-50">
+        <div className="text-xs font-semibold text-slate-500 uppercase mb-2">Activity Flow</div>
+        <div className="flex flex-wrap gap-1">
+          {state.relationships.map(r => (
+            <span key={r.id} className="text-xs bg-white border rounded px-2 py-1">{r.from} → {r.to}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Step Editor
+const StepEditor = ({ steps, onChange }) => (
+  <div className="space-y-3">
+    <div className="flex justify-between items-center">
+      <h3 className="font-semibold">Steps ({steps.length})</h3>
+      <button onClick={() => onChange([...steps, { id: Date.now(), name: `Step ${steps.length+1}`, help: "" }])} className="px-3 py-1 bg-sky-500 text-white text-sm rounded-lg">+ Add</button>
+    </div>
+    {steps.map((s, i) => (
+      <div key={s.id} className="flex gap-2 items-center p-2 bg-white border rounded-lg">
+        <span className="w-6 h-6 rounded-full bg-sky-500 text-white text-xs flex items-center justify-center">{i+1}</span>
+        <input value={s.name} onChange={e => onChange(steps.map(x => x.id === s.id ? {...x, name: e.target.value} : x))} className="flex-1 px-2 py-1 border rounded text-sm" placeholder="Step Name" />
+        <input value={s.help} onChange={e => onChange(steps.map(x => x.id === s.id ? {...x, help: e.target.value} : x))} className="flex-1 px-2 py-1 border rounded text-sm" placeholder="Help Text" />
+        <button onClick={() => onChange(steps.filter(x => x.id !== s.id))} className="text-red-400 px-2">✕</button>
+      </div>
+    ))}
+  </div>
+);
+
+// Activity Editor
+const ActivityEditor = ({ activities, steps, relationships, onChangeAct, onChangeRel }) => {
+  const addActivity = () => {
+    const name = `Activity${Date.now()}`;
+    const endIdx = activities.findIndex(a => a.type === "end");
+    const newActs = [...activities];
+    newActs.splice(endIdx, 0, { id: name, name, type: "manual", stepName: "", folderName: "", fsr: "ExplicitFolder", rule: "", ruleGroup: "", help: "" });
+    onChangeAct(newActs);
+    const beforeEnd = relationships.find(r => r.to === "END");
+    if (beforeEnd) {
+      onChangeRel([...relationships.filter(r => r.to !== "END"), { id: Date.now(), from: beforeEnd.from, to: name }, { id: Date.now()+1, from: name, to: "END" }]);
+    }
+  };
+  
+  const deleteActivity = (id) => {
+    const act = activities.find(a => a.id === id);
+    if (!act || act.type === "start" || act.type === "end") return;
+    const incoming = relationships.find(r => r.to === act.name);
+    const outgoing = relationships.find(r => r.from === act.name);
+    let newRels = relationships.filter(r => r.from !== act.name && r.to !== act.name);
+    if (incoming && outgoing) newRels.push({ id: Date.now(), from: incoming.from, to: outgoing.to });
+    onChangeRel(newRels);
+    onChangeAct(activities.filter(a => a.id !== id));
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-between items-center">
+        <h3 className="font-semibold">Activities ({activities.length})</h3>
+        <button onClick={addActivity} className="px-3 py-1 bg-emerald-500 text-white text-sm rounded-lg">+ Add</button>
+      </div>
+      {activities.map(a => (
+        <details key={a.id} className="bg-white border rounded-lg">
+          <summary className="p-3 cursor-pointer flex items-center gap-2">
+            <span className={`px-2 py-0.5 rounded text-xs ${a.type === "manual" ? "bg-sky-100 text-sky-700" : a.type === "automated" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-700"}`}>{a.type}</span>
+            <span className="font-medium">{a.name}</span>
+            {a.stepName && <span className="text-xs text-slate-500">({a.stepName})</span>}
+            {a.folderName && <span className="text-xs text-slate-400 ml-auto">→ {a.folderName}</span>}
+          </summary>
+          <div className="p-3 border-t space-y-3">
+            <div className="grid gap-2 md:grid-cols-2">
+              <div><label className="text-xs text-slate-500">Name</label><input value={a.name} onChange={e => { const old = a.name; onChangeAct(activities.map(x => x.id === a.id ? {...x, name: e.target.value, id: e.target.value} : x)); onChangeRel(relationships.map(r => ({ ...r, from: r.from === old ? e.target.value : r.from, to: r.to === old ? e.target.value : r.to }))); }} disabled={a.type === "start" || a.type === "end"} className="w-full px-2 py-1 border rounded text-sm" /></div>
+              <div><label className="text-xs text-slate-500">Type</label><select value={a.type} onChange={e => onChangeAct(activities.map(x => x.id === a.id ? {...x, type: e.target.value} : x))} disabled={a.type === "start" || a.type === "end"} className="w-full px-2 py-1 border rounded text-sm">{ACTIVITY_TYPES.map(t => <option key={t}>{t}</option>)}</select></div>
+              <div><label className="text-xs text-slate-500">Step</label><select value={a.stepName} onChange={e => onChangeAct(activities.map(x => x.id === a.id ? {...x, stepName: e.target.value} : x))} className="w-full px-2 py-1 border rounded text-sm"><option value="">--</option>{steps.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}</select></div>
+              <div><label className="text-xs text-slate-500">Folder Selection</label><select value={a.fsr} onChange={e => onChangeAct(activities.map(x => x.id === a.id ? {...x, fsr: e.target.value} : x))} className="w-full px-2 py-1 border rounded text-sm">{FSR_TYPES.map(f => <option key={f}>{f}</option>)}</select></div>
+            </div>
+            {a.fsr === "ExplicitFolder" && <div><label className="text-xs text-slate-500">Folder/Approver Group</label><input value={a.folderName} onChange={e => onChangeAct(activities.map(x => x.id === a.id ? {...x, folderName: e.target.value} : x))} className="w-full px-2 py-1 border rounded text-sm" placeholder="e.g., EHS Check, Capital Approvers" /></div>}
+            {a.fsr === "MultiElementDynamic" && <div><label className="text-xs text-slate-500">ADW Rule Group</label><input value={a.ruleGroup} onChange={e => onChangeAct(activities.map(x => x.id === a.id ? {...x, ruleGroup: e.target.value} : x))} className="w-full px-2 py-1 border rounded text-sm" placeholder="e.g., Approval 1" /></div>}
+            <div><label className="text-xs text-slate-500">Rule</label><textarea value={a.rule} onChange={e => onChangeAct(activities.map(x => x.id === a.id ? {...x, rule: e.target.value} : x))} className="w-full px-2 py-1 border rounded text-sm font-mono" rows={2} placeholder='e.g., Document.RequiresRuleGroupEvaluation("Approval 1") == true' /></div>
+            <div><label className="text-xs text-slate-500">Help Text</label><input value={a.help} onChange={e => onChangeAct(activities.map(x => x.id === a.id ? {...x, help: e.target.value} : x))} className="w-full px-2 py-1 border rounded text-sm" /></div>
+            {a.type !== "start" && a.type !== "end" && <button onClick={() => deleteActivity(a.id)} className="text-red-500 text-sm">Delete Activity</button>}
+          </div>
+        </details>
+      ))}
+    </div>
+  );
+};
+
+// Relationships Editor
+const RelEditor = ({ relationships, activities, onChange }) => (
+  <div className="space-y-3">
+    <div className="flex justify-between items-center">
+      <h3 className="font-semibold">Relationships ({relationships.length})</h3>
+      <button onClick={() => onChange([...relationships, { id: Date.now(), from: "START", to: "END" }])} className="px-3 py-1 bg-amber-500 text-white text-sm rounded-lg">+ Add</button>
+    </div>
+    {relationships.map(r => (
+      <div key={r.id} className="flex gap-2 items-center p-2 bg-white border rounded-lg">
+        <select value={r.from} onChange={e => onChange(relationships.map(x => x.id === r.id ? {...x, from: e.target.value} : x))} className="flex-1 px-2 py-1 border rounded text-sm">{activities.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}</select>
+        <span className="text-slate-400 font-bold">→</span>
+        <select value={r.to} onChange={e => onChange(relationships.map(x => x.id === r.id ? {...x, to: e.target.value} : x))} className="flex-1 px-2 py-1 border rounded text-sm">{activities.map(a => <option key={a.id} value={a.name}>{a.name}</option>)}</select>
+        <button onClick={() => onChange(relationships.filter(x => x.id !== r.id))} className="text-red-400 px-2">✕</button>
+      </div>
+    ))}
+  </div>
+);
+
+// Builder Mode
+const BuilderMode = ({ state, setState }) => {
+  const [tab, setTab] = useState("steps");
+  const xml = useMemo(() => buildXml(state), [state]);
+  
+  return (
+    <div className="space-y-4">
+      <Dashboard state={state} />
+      
+      <div className="bg-white rounded-xl border p-4 space-y-4">
+        <div className="grid gap-3 md:grid-cols-4">
+          <div><label className="text-xs text-slate-500">Module</label><select value={state.module} onChange={e => setState({...state, module: e.target.value, workflowType: WORKFLOW_MODULES[e.target.value][0].id})} className="w-full px-2 py-1 border rounded text-sm">{Object.keys(WORKFLOW_MODULES).map(m => <option key={m}>{m}</option>)}</select></div>
+          <div><label className="text-xs text-slate-500">Workflow Type</label><select value={state.workflowType} onChange={e => setState({...state, workflowType: e.target.value})} className="w-full px-2 py-1 border rounded text-sm">{WORKFLOW_MODULES[state.module]?.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
+          <div><label className="text-xs text-slate-500">Version</label><input value={state.version} onChange={e => setState({...state, version: e.target.value})} className="w-full px-2 py-1 border rounded text-sm" /></div>
+          <div><label className="text-xs text-slate-500">Description</label><input value={state.versionDescription} onChange={e => setState({...state, versionDescription: e.target.value})} className="w-full px-2 py-1 border rounded text-sm" /></div>
+        </div>
+      </div>
+      
+      <div className="flex gap-2 border-b">
+        {["steps", "activities", "relationships", "xml"].map(t => (
+          <button key={t} onClick={() => setTab(t)} className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${tab === t ? "border-sky-500 text-sky-600" : "border-transparent text-slate-500"}`}>{t.charAt(0).toUpperCase() + t.slice(1)}</button>
+        ))}
+      </div>
+      
+      <div className="bg-white rounded-xl border p-4">
+        {tab === "steps" && <StepEditor steps={state.steps} onChange={steps => setState({...state, steps})} />}
+        {tab === "activities" && <ActivityEditor activities={state.activities} steps={state.steps} relationships={state.relationships} onChangeAct={activities => setState({...state, activities})} onChangeRel={relationships => setState({...state, relationships})} />}
+        {tab === "relationships" && <RelEditor relationships={state.relationships} activities={state.activities} onChange={relationships => setState({...state, relationships})} />}
+        {tab === "xml" && (
+          <div className="space-y-3">
+            <div className="flex justify-between"><h3 className="font-semibold">Generated XML</h3><button onClick={() => download(`${state.workflowType}-workflow.xml`, xml)} className="px-4 py-2 bg-slate-900 text-white text-sm rounded-lg">Download</button></div>
+            <textarea value={xml} readOnly rows={20} className="w-full px-3 py-2 bg-slate-900 text-emerald-300 font-mono text-xs rounded-lg" />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Template Mode
+const TemplateMode = ({ state, setState }) => {
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    if (file.name.endsWith(".xml")) {
+      const text = await file.text();
+      try { setState(parseXml(text)); } catch (err) { alert("Error: " + err.message); }
+    } else {
+      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" });
+      const newState = createDefault();
+      rows.forEach((r, i) => {
+        const name = r["Step Name"] || r["Step"] || r["Approval"] || `Step ${i+1}`;
+        const folder = r["Folder"] || r["Approver"] || "";
+        if (name) {
+          newState.steps.push({ id: i+1, name, help: "" });
+          const actName = name.replace(/[^A-Za-z0-9]/g, "");
+          const endIdx = newState.activities.findIndex(a => a.type === "end");
+          newState.activities.splice(endIdx, 0, { id: actName, name: actName, type: "manual", stepName: name, folderName: folder, fsr: folder ? "ExplicitFolder" : "Department", rule: "", ruleGroup: "", help: "" });
+        }
+      });
+      newState.relationships = newState.activities.map((a, i) => i < newState.activities.length - 1 ? { id: i+1, from: a.name, to: newState.activities[i+1].name } : null).filter(Boolean);
+      setState(newState);
+    }
+  };
+  
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-xl border p-4">
+        <h3 className="font-semibold mb-3">Import Workflow</h3>
+        <input type="file" accept=".xml,.xlsx,.xls" onChange={handleUpload} className="w-full px-3 py-2 border rounded-lg text-sm" />
+        <p className="text-xs text-slate-500 mt-2">Upload an existing XML workflow file or Excel spreadsheet with columns: Step Name, Folder/Approver</p>
+      </div>
+      <BuilderMode state={state} setState={setState} />
+    </div>
+  );
+};
+
+// Questionnaire Mode
+const QuestionnaireMode = ({ answers, setAnswers, state, setState }) => {
+  const questions = [
+    { id: "module", text: "Which Jaggaer module?", type: "select", options: Object.keys(WORKFLOW_MODULES) },
+    { id: "wfType", text: "Which workflow type?", type: "wfType" },
+    { id: "numSteps", text: "How many approval steps?", type: "number" },
+    { id: "hasDept", text: "Need departmental approval?", type: "yesno" },
+    { id: "hasADW", text: "Use ADW (Approval Decision Wizard)?", type: "yesno" },
+    { id: "hasAuto", text: "Need automated activities (Create PO, etc.)?", type: "yesno" },
+    { id: "hasEHS", text: "Need EHS/Hazmat approval?", type: "yesno" },
+  ];
+  
+  const current = questions[answers.step || 0];
+  const wfTypes = WORKFLOW_MODULES[answers.module] || [];
+  
+  const answer = (val) => {
+    const next = { ...answers, [current.id]: val, step: (answers.step || 0) + 1 };
+    if (next.step >= questions.length) {
+      next.done = true;
+      // Generate workflow
+      const newState = createDefault();
+      newState.module = next.module || "eProcurement";
+      newState.workflowType = next.wfType || "requisition";
+      newState.versionDescription = "Generated from Questionnaire";
+      
+      for (let i = 1; i <= (parseInt(next.numSteps) || 1); i++) {
+        newState.steps.push({ id: i, name: `Approval ${i}`, help: "" });
+        const endIdx = newState.activities.findIndex(a => a.type === "end");
+        newState.activities.splice(endIdx, 0, { id: `Approval${i}`, name: `Approval${i}`, type: "manual", stepName: `Approval ${i}`, folderName: "", fsr: next.hasADW ? "MultiElementDynamic" : "ExplicitFolder", rule: next.hasADW ? `Document.RequiresRuleGroupEvaluation("Approval ${i}") == true` : "", ruleGroup: next.hasADW ? `Approval ${i}` : "", help: "" });
+      }
+      if (next.hasDept) {
+        newState.steps.push({ id: newState.steps.length + 1, name: "Department Approval", help: "" });
+        const endIdx = newState.activities.findIndex(a => a.type === "end");
+        newState.activities.splice(endIdx, 0, { id: "DeptApproval", name: "DeptApproval", type: "manual", stepName: "Department Approval", folderName: "", fsr: "Department", rule: "Document.RequiresDepartmentalApproval() == true", ruleGroup: "", help: "" });
+      }
+      if (next.hasEHS) {
+        newState.steps.push({ id: newState.steps.length + 1, name: "EHS Check", help: "" });
+        const endIdx = newState.activities.findIndex(a => a.type === "end");
+        newState.activities.splice(endIdx, 0, { id: "EHSCheck", name: "EHSCheck", type: "manual", stepName: "EHS Check", folderName: "EHS Check", fsr: "ExplicitFolder", rule: "[Product.Toxin=true] || [Product.Hazardous=true]", ruleGroup: "", help: "" });
+      }
+      if (next.hasAuto) {
+        newState.steps.push({ id: newState.steps.length + 1, name: "Create PO", help: "" });
+        const endIdx = newState.activities.findIndex(a => a.type === "end");
+        newState.activities.splice(endIdx, 0, { id: "CreatePO", name: "CreatePO", type: "automated", stepName: "Create PO", folderName: "Create PO", fsr: "ExplicitFolder", rule: "true", ruleGroup: "", help: "" });
+      }
+      newState.relationships = newState.activities.map((a, i) => i < newState.activities.length - 1 ? { id: i+1, from: a.name, to: newState.activities[i+1].name } : null).filter(Boolean);
+      setState(newState);
+    }
+    setAnswers(next);
+  };
+  
+  if (answers.done) return <BuilderMode state={state} setState={setState} />;
+  
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-xl border p-4">
+        <div className="flex justify-between mb-2"><span className="text-sm text-slate-500">Question {(answers.step || 0) + 1} of {questions.length}</span></div>
+        <div className="h-2 bg-slate-200 rounded-full mb-4"><div className="h-full bg-sky-500 rounded-full transition-all" style={{ width: `${((answers.step || 0) / questions.length) * 100}%` }} /></div>
+        
+        <h2 className="text-xl font-semibold mb-4">{current?.text}</h2>
+        
+        {current?.type === "select" && (
+          <div className="grid gap-2 md:grid-cols-2">{current.options.map(o => <button key={o} onClick={() => answer(o)} className="text-left px-4 py-3 border rounded-xl hover:border-sky-400 hover:bg-sky-50">{o}</button>)}</div>
+        )}
+        {current?.type === "wfType" && (
+          <div className="grid gap-2">{wfTypes.map(w => <button key={w.id} onClick={() => answer(w.id)} className="text-left px-4 py-3 border rounded-xl hover:border-sky-400 hover:bg-sky-50"><div className="font-medium">{w.name}</div><div className="text-sm text-slate-500">{w.desc}</div></button>)}</div>
+        )}
+        {current?.type === "number" && (
+          <div className="flex gap-2"><input type="number" id="numInput" defaultValue="3" min="1" max="15" className="flex-1 px-4 py-3 border rounded-xl" /><button onClick={() => answer(document.getElementById("numInput").value)} className="px-6 py-3 bg-sky-500 text-white rounded-xl">Next</button></div>
+        )}
+        {current?.type === "yesno" && (
+          <div className="flex gap-3"><button onClick={() => answer(true)} className="flex-1 px-6 py-4 border-2 border-emerald-200 bg-emerald-50 text-emerald-800 font-semibold rounded-xl">Yes</button><button onClick={() => answer(false)} className="flex-1 px-6 py-4 border-2 border-slate-200 bg-slate-50 text-slate-800 font-semibold rounded-xl">No</button></div>
+        )}
+      </div>
+      
+      <button onClick={() => setAnswers({ step: 0 })} className="text-sm text-slate-500 hover:text-slate-700">← Start Over</button>
+    </div>
+  );
+};
+
+// Main App
+const App = () => {
+  const [mode, setMode] = useState("builder");
+  const [builderState, setBuilderState] = useState(createDefault());
+  const [templateState, setTemplateState] = useState(createDefault());
+  const [qState, setQState] = useState(createDefault());
+  const [qAnswers, setQAnswers] = useState({ step: 0 });
+
+  return (
+    <div className="min-h-screen bg-slate-100">
+      <div className="max-w-7xl mx-auto p-4 md:p-6">
+        <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-2xl p-6 mb-6 shadow-xl">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold">Jaggaer Workflow Studio</h1>
+              <p className="text-slate-300 text-sm mt-1">Build, import, or generate workflow definitions without coding</p>
+            </div>
+            <div className="flex gap-2">
+              {["builder", "template", "questionnaire"].map(m => (
+                <button key={m} onClick={() => setMode(m)} className={`px-4 py-2 rounded-xl text-sm font-medium transition ${mode === m ? "bg-white text-slate-900" : "bg-white/10 hover:bg-white/20"}`}>{m.charAt(0).toUpperCase() + m.slice(1)}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+        
+        {mode === "builder" && <BuilderMode state={builderState} setState={setBuilderState} />}
+        {mode === "template" && <TemplateMode state={templateState} setState={setTemplateState} />}
+        {mode === "questionnaire" && <QuestionnaireMode answers={qAnswers} setAnswers={setQAnswers} state={qState} setState={setQState} />}
+      </div>
+    </div>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>

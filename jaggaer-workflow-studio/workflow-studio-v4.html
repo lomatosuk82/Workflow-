@@ -1,0 +1,2742 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jaggaer Approval Workflow Studio</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+const { useState, useMemo, Fragment, useEffect } = React;
+
+// ============ GUIDED HELP & TOOLTIPS ============
+const HELP_TEXTS = {
+  module: {
+    title: "Select Module",
+    description: "Choose the Jaggaer module this workflow belongs to. This determines which workflow types are available.",
+    tip: "💡 Most common: eProcurement for requisitions/POs, Accounts Payable for invoices/receipts"
+  },
+  workflowType: {
+    title: "Workflow Type",
+    description: "Select the specific document type this workflow will process.",
+    tip: "💡 This determines the XML WorkflowType element and available routing options"
+  },
+  vertical: {
+    title: "Industry Vertical",
+    description: "Select your customer's industry to get relevant approval pattern suggestions.",
+    tip: "💡 Different industries have different compliance and approval requirements"
+  },
+  activityType: {
+    title: "Activity Type",
+    description: "Manual = Human approval required | Automated = System robot action | Notification = Email alert only",
+    tip: "💡 Use 'Automated' for Create PO, Create Inventory robots"
+  },
+  routingMode: {
+    title: "Routing Mode",
+    description: "How approvers are determined: ADW = Rule-based dynamic | Department = Org hierarchy | Static = Fixed folder | Custom Field = Based on document field",
+    tip: "💡 ADW is most flexible - rules can be changed without XML updates"
+  },
+  driver: {
+    title: "Rule Driver",
+    description: "What triggers this approval: Amount thresholds, Department codes, Commodity categories, GL accounts, or Product attributes",
+    tip: "💡 Amount is most common. Combine with other drivers for complex rules"
+  },
+  threshold: {
+    title: "Amount Threshold",
+    description: "Minimum document amount that triggers this approval step (0 = all amounts)",
+    tip: "💡 Example: 10000 means this step only applies to documents >= $10,000"
+  },
+  folder: {
+    title: "Shared Folder",
+    description: "For Static routing: the shared folder where documents are routed for approval",
+    tip: "💡 Folder must exist in Jaggaer or be created during implementation"
+  },
+  ruleGroup: {
+    title: "ADW Rule Group",
+    description: "The internal name of the ADW Rule Group that determines approvers",
+    tip: "💡 Rule Groups are configured in Jaggaer Admin > Approval Delegation Wizard"
+  },
+  approvers: {
+    title: "Approvers",
+    description: "Jaggaer usernames or email addresses of approvers for this step",
+    tip: "💡 Separate multiple approvers with commas"
+  },
+  ruleExpression: {
+    title: "Rule Expression (CDATA)",
+    description: "The condition that must be true for this activity to execute. Uses Jaggaer expression syntax.",
+    tip: "💡 Auto-generated based on your settings. Enable 'Manual Override' to edit directly"
+  }
+};
+
+const WORKFLOW_SUGGESTIONS = {
+  requisition: {
+    name: "Requisition Workflow",
+    suggestedSteps: [
+      { name: "Department Approval", mode: "dynamic", driver: "department", description: "Route to department manager based on requester's department" },
+      { name: "Commodity Review", mode: "adw", driver: "commodity", description: "Specialist review based on what's being purchased" },
+      { name: "High Value Approval", mode: "adw", driver: "amount", threshold: "25000", description: "Executive approval for large purchases" },
+    ],
+    tips: ["Consider adding EHS review for hazardous materials", "Capital items often need separate GL-based approval"]
+  },
+  purchaseOrder: {
+    name: "Purchase Order Workflow",
+    suggestedSteps: [
+      { name: "Buyer Review", mode: "static", driver: "amount", folder: "Buyer Review", description: "Procurement team reviews PO details" },
+      { name: "Manager Approval", mode: "adw", driver: "amount", threshold: "10000", description: "Manager approval based on PO value" },
+      { name: "Create PO", mode: "static", driver: "amount", activityType: "automated", folder: "Create PO", description: "System creates the PO in ERP" },
+    ],
+    tips: ["PO workflows often include automated Create PO step", "Consider change order thresholds"]
+  },
+  invoice: {
+    name: "Invoice Workflow",
+    suggestedSteps: [
+      { name: "3-Way Match Check", mode: "static", driver: "amount", folder: "AP Review", description: "Verify invoice matches PO and receipt" },
+      { name: "Exception Approval", mode: "adw", driver: "amount", description: "Approval for invoices with variances" },
+      { name: "Payment Release", mode: "static", driver: "amount", folder: "Payment", description: "Final approval before payment" },
+    ],
+    tips: ["Invoice workflows often have tolerance-based exception routing", "Consider vendor-specific approval rules"]
+  },
+  receipt: {
+    name: "Receipt Workflow",
+    suggestedSteps: [
+      { name: "Quality Inspection", mode: "static", driver: "product", folder: "QA Review", description: "Quality check for received goods" },
+      { name: "Inventory Update", mode: "static", driver: "amount", activityType: "automated", folder: "Create Inventory", description: "System updates inventory records" },
+    ],
+    tips: ["Receipt workflows often include inventory automation", "Consider inspection requirements by commodity"]
+  },
+  contract: {
+    name: "Contract Workflow",
+    suggestedSteps: [
+      { name: "Legal Review", mode: "static", driver: "amount", folder: "Legal Review", description: "Legal team reviews contract terms" },
+      { name: "Risk Assessment", mode: "adw", driver: "amount", threshold: "100000", description: "Risk review for high-value contracts" },
+      { name: "Executive Approval", mode: "adw", driver: "amount", threshold: "500000", description: "C-level approval for major contracts" },
+    ],
+    tips: ["Contract workflows often have multiple legal/compliance steps", "Consider contract type-specific routing"]
+  },
+  supplierRegistration: {
+    name: "Supplier Registration Workflow",
+    suggestedSteps: [
+      { name: "Procurement Review", mode: "static", driver: "amount", folder: "Supplier Review", description: "Procurement validates supplier information" },
+      { name: "Compliance Check", mode: "static", driver: "amount", folder: "Compliance", description: "Verify supplier meets compliance requirements" },
+    ],
+    tips: ["Consider risk-based approval for different supplier categories", "Include diversity certification review if applicable"]
+  }
+};
+
+// Tooltip Component
+const Tooltip = ({ text, children }) => {
+  const [show, setShow] = useState(false);
+  return (
+    <span className="relative inline-block">
+      <span 
+        onMouseEnter={() => setShow(true)} 
+        onMouseLeave={() => setShow(false)}
+        className="cursor-help"
+      >
+        {children}
+      </span>
+      {show && (
+        <div className="absolute z-50 bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-slate-900 text-white text-xs rounded-lg shadow-lg w-64 whitespace-normal">
+          {text}
+          <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-slate-900"></div>
+        </div>
+      )}
+    </span>
+  );
+};
+
+// Help Icon with Tooltip
+const HelpIcon = ({ helpKey }) => {
+  const help = HELP_TEXTS[helpKey];
+  if (!help) return null;
+  return (
+    <Tooltip text={`${help.description} ${help.tip}`}>
+      <span className="inline-flex items-center justify-center w-4 h-4 ml-1 text-[10px] bg-slate-200 text-slate-600 rounded-full hover:bg-sky-200 hover:text-sky-700 cursor-help">?</span>
+    </Tooltip>
+  );
+};
+
+// Guided Step Indicator
+const GuidedSteps = ({ currentStep, steps }) => (
+  <div className="flex items-center gap-2 mb-4">
+    {steps.map((step, i) => (
+      <Fragment key={i}>
+        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium ${
+          i < currentStep ? "bg-emerald-100 text-emerald-700" : 
+          i === currentStep ? "bg-sky-500 text-white" : 
+          "bg-slate-100 text-slate-400"
+        }`}>
+          <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+            i < currentStep ? "bg-emerald-500 text-white" : 
+            i === currentStep ? "bg-white text-sky-600" : 
+            "bg-slate-200 text-slate-500"
+          }`}>
+            {i < currentStep ? "✓" : i + 1}
+          </span>
+          {step}
+        </div>
+        {i < steps.length - 1 && <div className={`w-8 h-0.5 ${i < currentStep ? "bg-emerald-300" : "bg-slate-200"}`}></div>}
+      </Fragment>
+    ))}
+  </div>
+);
+
+// Suggestion Card Component
+const SuggestionCard = ({ suggestion, onApply }) => (
+  <div className="rounded-xl border-2 border-dashed border-sky-300 bg-sky-50 p-4 hover:border-sky-400 hover:bg-sky-100 transition cursor-pointer" onClick={onApply}>
+    <div className="flex items-start justify-between">
+      <div>
+        <div className="font-semibold text-sky-900">{suggestion.name}</div>
+        <div className="text-xs text-sky-700 mt-1">{suggestion.description}</div>
+        <div className="flex flex-wrap gap-1 mt-2">
+          <span className="px-2 py-0.5 bg-sky-200 text-sky-800 rounded text-[10px]">{suggestion.mode}</span>
+          <span className="px-2 py-0.5 bg-sky-200 text-sky-800 rounded text-[10px]">{suggestion.driver}</span>
+          {suggestion.threshold && <span className="px-2 py-0.5 bg-amber-200 text-amber-800 rounded text-[10px]">≥{suggestion.threshold}</span>}
+        </div>
+      </div>
+      <span className="text-sky-500 text-xl">+</span>
+    </div>
+  </div>
+);
+
+// Welcome/Onboarding Modal
+const WelcomeModal = ({ onClose, onSelectMode }) => (
+  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full p-8 animate-in fade-in">
+      <div className="text-center mb-6">
+        <div className="text-4xl mb-3">🚀</div>
+        <h2 className="text-2xl font-bold text-slate-900">Welcome to Jaggaer Workflow Studio</h2>
+        <p className="text-slate-600 mt-2">Build approval workflows in minutes, not hours</p>
+      </div>
+      
+      <div className="grid gap-4 md:grid-cols-3 mb-6">
+        <button onClick={() => onSelectMode("builder")} className="p-4 rounded-2xl border-2 border-slate-200 hover:border-sky-400 hover:bg-sky-50 transition text-left">
+          <div className="text-2xl mb-2">🔧</div>
+          <div className="font-semibold text-slate-900">Builder Mode</div>
+          <div className="text-xs text-slate-500 mt-1">Build workflow step-by-step with guided assistance</div>
+        </button>
+        <button onClick={() => onSelectMode("template")} className="p-4 rounded-2xl border-2 border-slate-200 hover:border-emerald-400 hover:bg-emerald-50 transition text-left">
+          <div className="text-2xl mb-2">📊</div>
+          <div className="font-semibold text-slate-900">Template Import</div>
+          <div className="text-xs text-slate-500 mt-1">Import from customer Excel template</div>
+        </button>
+        <button onClick={() => onSelectMode("questionnaire")} className="p-4 rounded-2xl border-2 border-slate-200 hover:border-purple-400 hover:bg-purple-50 transition text-left">
+          <div className="text-2xl mb-2">📋</div>
+          <div className="font-semibold text-slate-900">Questionnaire</div>
+          <div className="text-xs text-slate-500 mt-1">Answer questions to generate workflow</div>
+        </button>
+      </div>
+      
+      <div className="bg-slate-50 rounded-xl p-4 mb-6">
+        <div className="text-sm font-medium text-slate-700 mb-2">💡 Quick Tips:</div>
+        <ul className="text-xs text-slate-600 space-y-1">
+          <li>• <strong>Builder Mode</strong> is best when you know the exact workflow structure</li>
+          <li>• <strong>Template Import</strong> is ideal when customer provides an Excel with approval rules</li>
+          <li>• <strong>Questionnaire</strong> helps capture requirements during discovery workshops</li>
+        </ul>
+      </div>
+      
+      <div className="flex justify-center">
+        <button onClick={onClose} className="text-sm text-slate-500 hover:text-slate-700">Skip intro and start building →</button>
+      </div>
+    </div>
+  </div>
+);
+
+// Next Step Suggestion Banner
+const NextStepBanner = ({ message, action, onAction }) => (
+  <div className="rounded-xl bg-gradient-to-r from-sky-500 to-indigo-500 text-white p-4 mb-4 flex items-center justify-between">
+    <div className="flex items-center gap-3">
+      <span className="text-2xl">💡</span>
+      <div>
+        <div className="font-medium">{message}</div>
+      </div>
+    </div>
+    {action && (
+      <button onClick={onAction} className="px-4 py-2 bg-white text-sky-600 rounded-lg text-sm font-medium hover:bg-sky-50">
+        {action}
+      </button>
+    )}
+  </div>
+);
+
+// ============ WORKFLOW TYPES BY MODULE ============
+const WORKFLOW_MODULES = {
+  "eProcurement": [
+    { id: "requisition", name: "Requisition Workflow", desc: "Approving requisitions" },
+    { id: "purchaseOrder", name: "Purchase Order Workflow", desc: "Approving purchase orders" },
+    { id: "formRequest", name: "Form Request Workflow", desc: "Quick Quotes, Generic, Procurement, Check, Multi-Check, Credit Memo, Supplier, Contract, Savings Initiative, Budget Transfer requests" },
+    { id: "fulfillment", name: "Fulfillment Workflow", desc: "Routing sales orders for internal stockroom requests" },
+  ],
+  "Supplier Management": [
+    { id: "supplierRegistration", name: "Supplier Registration Workflow", desc: "Approving supplier registrations" },
+    { id: "supplierReview", name: "Supplier Review Workflow", desc: "Approving changes to supplier information" },
+  ],
+  "Accounts Payable": [
+    { id: "invoice", name: "Invoice Workflow", desc: "Approving invoices" },
+    { id: "receipt", name: "Receipt Workflow", desc: "Approving receipts" },
+  ],
+  "Sourcing": [
+    { id: "sourcingEventApproval", name: "Sourcing Event Approval Workflow", desc: "Approving sourcing events released to suppliers" },
+    { id: "sourcingEvaluation", name: "Sourcing Evaluation Workflow", desc: "Evaluating responses and awarding sourcing events" },
+  ],
+  "Contract Lifecycle Management": [
+    { id: "contract", name: "Contract Workflow", desc: "Approving contracts" },
+    { id: "contractInternalReview", name: "Contract Internal Review Workflow", desc: "Automated internal contract review" },
+  ],
+  "Savings Management": [
+    { id: "savingsInitiative", name: "Savings Initiative Approval Workflow", desc: "Approving savings initiatives" },
+  ],
+  "Budget Management": [
+    { id: "budgetManager", name: "Budget Manager Workflow", desc: "Approving Budget Manager objects" },
+  ],
+};
+
+const VERTICALS = {
+  Manufacturing: { questions: ["Should direct materials, MRO, and capex follow different approval patterns?", "Do receipts require inventory creation or quality inspection automation?", "Which plants or departments require distinct approval chains?"] },
+  Healthcare: { questions: ["Which commodities require clinical, pharmacy, or patient-safety review?", "What urgent scenarios require accelerated routing?", "Which exceptions bypass standard routing?"] },
+  "Higher Education": { questions: ["Do grants or restricted funds override department approval?", "Do principal investigators approve by grant, department, or amount?", "Are there fiscal year-end hold requirements?"] },
+  "Public Sector": { questions: ["Which statutory thresholds require procurement intervention?", "Which categories require legal or policy review?", "How are overrides recorded for audit?"] },
+  "Life Sciences": { questions: ["Which categories require QA or EHS review?", "Which controlled items require separate notification or approval?", "What evidence is required for exception approval?"] },
+};
+
+const QUESTION_BANK = {
+  foundations: [
+    "Which workflow type is being designed: requisition, receipt, contract approval, invoice, or another process?",
+    "What business objective is the workflow solving: budget control, policy compliance, category oversight, inventory handling, legal review, or segregation of duties?",
+    "Which approval dimensions materially change routing: department, commodity, amount, GL account, project, supplier, or custom field?",
+    "Which conditions should create separate steps versus only different approvers within the same step?",
+  ],
+  governance: [
+    "What are the approval thresholds by department, entity, or role?",
+    "Which approvals expire, and is expiry driven by department, user, role, or specific GL accounts?",
+    "Which exceptions bypass standard routing, and who is authorized to define or approve them?",
+    "Are there mandatory reviewers for specific commodities or regulated categories?",
+  ],
+  technical: [
+    "Which rules can be maintained by the customer in ADW versus hard-coded in XML?",
+    "Which folders already exist, and which shared folders or robots must be created?",
+    "Are there automated steps such as Create PO, Compile File, Create Inventory, or notification activities?",
+    "What test cases are needed for positive, negative, exception, and expiry scenarios?",
+  ],
+};
+
+// Template headers for each workflow type
+const TEMPLATE_HEADERS = {
+  po: {
+    name: "PO Approval Workflow",
+    headers: ["Main Category", "Commodity Code", "Commodity Name", "Company Code", "Condition", "Total Amount", "Approval Name", "ApprovalUserId", "Item Type"],
+    description: "Purchase Order approval workflow template",
+    sampleRow: { "Main Category": "", "Commodity Code": "", "Commodity Name": "", "Company Code": "", "Condition": ">=", "Total Amount": "0", "Approval Name": "", "ApprovalUserId": "", "Item Type": "" }
+  },
+  requisition: {
+    name: "Requisition Approval Workflow",
+    headers: ["Main Category", "Commodity Code", "Commodity Name", "Company Code", "Condition", "Total Amount", "Approval Name", "ApprovalUserId", "Item Type"],
+    description: "Requisition approval workflow template",
+    sampleRow: { "Main Category": "", "Commodity Code": "", "Commodity Name": "", "Company Code": "", "Condition": ">=", "Total Amount": "0", "Approval Name": "", "ApprovalUserId": "", "Item Type": "" }
+  },
+  creditMemo: {
+    name: "Credit Memo Approval Workflow",
+    headers: ["Document Type", "Company Code", "Vendor Code", "Condition", "Total Amount", "Approval Name", "ApprovalUserId", "Reason Code"],
+    description: "Credit Memo approval workflow template",
+    sampleRow: { "Document Type": "Credit Memo", "Company Code": "", "Vendor Code": "", "Condition": ">=", "Total Amount": "0", "Approval Name": "", "ApprovalUserId": "", "Reason Code": "" }
+  },
+  changeOrder: {
+    name: "Change Order Approval Workflow",
+    headers: ["Change Type", "Original PO", "Company Code", "Condition", "Change Amount", "Approval Name", "ApprovalUserId", "Change Reason"],
+    description: "Change Order approval workflow template",
+    sampleRow: { "Change Type": "", "Original PO": "", "Company Code": "", "Condition": ">=", "Change Amount": "0", "Approval Name": "", "ApprovalUserId": "", "Change Reason": "" }
+  },
+  invoice: {
+    name: "Invoice Approval Workflow",
+    headers: ["Invoice Type", "Company Code", "Vendor Code", "GL Account", "Condition", "Total Amount", "Approval Name", "ApprovalUserId", "Cost Center"],
+    description: "Invoice approval workflow template",
+    sampleRow: { "Invoice Type": "", "Company Code": "", "Vendor Code": "", "GL Account": "", "Condition": ">=", "Total Amount": "0", "Approval Name": "", "ApprovalUserId": "", "Cost Center": "" }
+  },
+  contract: {
+    name: "Contract Approval Workflow",
+    headers: ["Contract Type", "Category", "Company Code", "Condition", "Contract Value", "Approval Name", "ApprovalUserId", "Legal Review", "Risk Level"],
+    description: "Contract approval workflow template",
+    sampleRow: { "Contract Type": "", "Category": "", "Company Code": "", "Condition": ">=", "Contract Value": "0", "Approval Name": "", "ApprovalUserId": "", "Legal Review": "No", "Risk Level": "Low" }
+  },
+  receipt: {
+    name: "Receipt Approval Workflow",
+    headers: ["Receipt Type", "Company Code", "Warehouse", "Condition", "Receipt Value", "Approval Name", "ApprovalUserId", "Inspection Required"],
+    description: "Receipt approval workflow template",
+    sampleRow: { "Receipt Type": "", "Company Code": "", "Warehouse": "", "Condition": ">=", "Receipt Value": "0", "Approval Name": "", "ApprovalUserId": "", "Inspection Required": "No" }
+  },
+  supplier: {
+    name: "Supplier Approval Workflow",
+    headers: ["Supplier Type", "Category", "Country", "Risk Level", "Condition", "Approval Name", "ApprovalUserId", "Compliance Check"],
+    description: "Supplier/Vendor approval workflow template",
+    sampleRow: { "Supplier Type": "", "Category": "", "Country": "", "Risk Level": "Low", "Condition": "", "Approval Name": "", "ApprovalUserId": "", "Compliance Check": "No" }
+  }
+};
+
+// Function to export Excel template
+const exportExcelTemplate = (workflowType) => {
+  const template = TEMPLATE_HEADERS[workflowType] || TEMPLATE_HEADERS.requisition;
+  const ws = XLSX.utils.json_to_sheet([template.sampleRow], { header: template.headers });
+  
+  // Set column widths
+  const colWidths = template.headers.map(h => ({ wch: Math.max(h.length + 2, 15) }));
+  ws['!cols'] = colWidths;
+  
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Approval Rules");
+  
+  // Add instructions sheet
+  const instructions = [
+    { "Instructions": "JAGGAER Approval Workflow Template" },
+    { "Instructions": `Template Type: ${template.name}` },
+    { "Instructions": "" },
+    { "Instructions": "Column Descriptions:" },
+    ...template.headers.map(h => ({ "Instructions": `• ${h}: Enter values for this field` })),
+    { "Instructions": "" },
+    { "Instructions": "Notes:" },
+    { "Instructions": "• Each row represents one approval rule" },
+    { "Instructions": "• Condition column accepts: >=, <=, =, >, <, BETWEEN" },
+    { "Instructions": "• ApprovalUserId should be the Jaggaer username" },
+    { "Instructions": "• Leave fields blank if not applicable" },
+    { "Instructions": "" },
+    { "Instructions": `Generated: ${new Date().toISOString().split('T')[0]}` },
+  ];
+  const wsInstructions = XLSX.utils.json_to_sheet(instructions);
+  wsInstructions['!cols'] = [{ wch: 60 }];
+  XLSX.utils.book_append_sheet(wb, wsInstructions, "Instructions");
+  
+  XLSX.writeFile(wb, `${workflowType}-approval-template.xlsx`);
+};
+
+const BUILDER_DEFAULTS = {
+  workflowType: "requisition",
+  module: "eProcurement",
+  versionDescription: "Generated by Jaggaer Approval Workflow Studio",
+  vertical: "Manufacturing",
+  includeExpiration: true,
+  expiryMode: "department",
+  useInventoryRobot: false,
+  sampleDepartment: "Operations",
+  sampleCommodity: "Capex Equipment",
+  sampleGl: "1505",
+  approvals: [
+    { id: 1, name: "Department Approval", mode: "dynamic", driver: "department", threshold: "0", folder: "" },
+    { id: 2, name: "Commodity Specialist", mode: "adw", driver: "commodity", threshold: "0", folder: "" },
+    { id: 3, name: "Capital Approval", mode: "adw", driver: "glAccount", threshold: "10000", folder: "" },
+  ],
+};
+
+const QUESTIONNAIRE_DEFAULTS = {
+  customerName: "",
+  workflowType: "requisition",
+  module: "eProcurement",
+  vertical: "Manufacturing",
+  versionDescription: "Generated from customer questionnaire",
+  routeByDepartment: true,
+  routeByCommodity: true,
+  routeByAmount: true,
+  routeByGl: false,
+  includeExpiry: true,
+  expiryMode: "department",
+  highValueThreshold: "25000",
+  departmentFolder: "Department Approval",
+  commodityFolder: "Commodity Review",
+  glFolder: "Finance Approval",
+  needsInventoryRobot: false,
+  notes: "",
+};
+
+// ============ UTILITIES ============
+const escapeXml = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+const slugify = (v) => String(v || "").replace(/[^A-Za-z0-9]+/g, " ").trim().split(/\s+/).map((p, i) => i === 0 ? p : p.charAt(0).toUpperCase() + p.slice(1)).join("") || "Activity";
+const recommendMode = (step) => step.mode === "adw" ? "ADW" : step.mode === "dynamic" ? "Dynamic" : "Static";
+
+// Build multi-value condition from comma-separated values
+const buildMultiValueCondition = (fieldExpr, values, logic = "or") => {
+  const valueList = String(values || "").split(",").map(v => v.trim()).filter(v => v);
+  if (valueList.length === 0) return "";
+  if (valueList.length === 1) return `[${fieldExpr} == "${valueList[0]}"]`;
+  
+  if (logic === "in") {
+    // Use "in" syntax: field in {"val1", "val2", "val3"}
+    return `[${fieldExpr} in {${valueList.map(v => `"${v}"`).join(", ")}}]`;
+  }
+  // Use explicit AND/OR logic
+  const conditions = valueList.map(v => `${fieldExpr} == "${v}"`);
+  const joiner = logic === "and" ? " && " : " || ";
+  return `[${conditions.join(joiner)}]`;
+};
+
+const buildRuleFromForm = (form, step) => {
+  const threshold = Number(step.threshold || 0);
+  const ruleLogic = step.ruleLogic || "in"; // "in", "and", "or"
+  const ruleValues = step.ruleValues || ""; // comma-separated values
+  
+  // If manual rule override exists, use it
+  if (step.manualRuleOverride) return step.templateRule || "";
+  
+  // ADW mode - with support for structured rules
+  if (step.mode === "adw") {
+    const ruleGroupName = step.ruleGroup || step.name;
+    
+    // If structured ADW rules exist, build a combined rule expression
+    if (step.adwRules && step.adwRules.length > 0) {
+      const ruleExpressions = step.adwRules.map(rule => {
+        const conditions = [];
+        
+        // Department condition
+        if (rule.department) {
+          const depts = rule.department.split(",").map(d => d.trim()).filter(d => d);
+          if (depts.length === 1) {
+            conditions.push(`Document.CustomFieldValues("Department") == "${depts[0]}"`);
+          } else if (depts.length > 1) {
+            conditions.push(`Document.CustomFieldValues("Department") in {${depts.map(d => `"${d}"`).join(", ")}}`);
+          }
+        }
+        
+        // Amount range conditions
+        if (rule.minAmount) {
+          conditions.push(`Document.TotalAmount() >= ${rule.minAmount}`);
+        }
+        if (rule.maxAmount) {
+          conditions.push(`Document.TotalAmount() <= ${rule.maxAmount}`);
+        }
+        
+        // Commodity condition
+        if (rule.commodity) {
+          const comms = rule.commodity.split(",").map(c => c.trim()).filter(c => c);
+          if (comms.length === 1) {
+            conditions.push(`Document.CustomFieldValues("Commodity Code") == "${comms[0]}"`);
+          } else if (comms.length > 1) {
+            conditions.push(`Document.CustomFieldValues("Commodity Code") in {${comms.map(c => `"${c}"`).join(", ")}}`);
+          }
+        }
+        
+        // GL Account condition
+        if (rule.glAccount) {
+          const gls = rule.glAccount.split(",").map(g => g.trim()).filter(g => g);
+          if (gls.length === 1) {
+            conditions.push(`Document.AccountCode() == "${gls[0]}"`);
+          } else if (gls.length > 1) {
+            conditions.push(`Document.AccountCode() in {${gls.map(g => `"${g}"`).join(", ")}}`);
+          }
+        }
+        
+        // Company Code condition
+        if (rule.companyCode) {
+          const codes = rule.companyCode.split(",").map(c => c.trim()).filter(c => c);
+          if (codes.length === 1) {
+            conditions.push(`Document.CustomFieldValues("Company Code") == "${codes[0]}"`);
+          } else if (codes.length > 1) {
+            conditions.push(`Document.CustomFieldValues("Company Code") in {${codes.map(c => `"${c}"`).join(", ")}}`);
+          }
+        }
+        
+        return conditions.length > 0 ? `(${conditions.join(" && ")})` : null;
+      }).filter(Boolean);
+      
+      // Combine all rule expressions with OR (any rule can match)
+      if (ruleExpressions.length > 0) {
+        return `Document.RequiresRuleGroupEvaluation("${ruleGroupName}") == true && (${ruleExpressions.join(" || ")})`;
+      }
+    }
+    
+    // Fallback to simple ADW rule
+    let rule = `Document.RequiresRuleGroupEvaluation("${ruleGroupName}") == true`;
+    if (threshold > 0) rule += ` && Document.TotalAmount() >= ${threshold}`;
+    return rule;
+  }
+  
+  // Dynamic Department mode
+  if (step.mode === "dynamic" && step.driver === "department") {
+    let rule = `Document.RequiresDepartmentalApproval() == true`;
+    if (threshold > 0) rule += ` && [Document.TotalAmount() >= ${threshold}]`;
+    return rule;
+  }
+  
+  // Department driver with multi-value support
+  if (step.driver === "department") {
+    const deptValues = ruleValues || form.sampleDepartment;
+    let rule = buildMultiValueCondition('Document.CustomFieldValues("Department")', deptValues, ruleLogic);
+    if (threshold > 0) rule += ` && [Document.TotalAmount() >= ${threshold}]`;
+    return rule || "true";
+  }
+  
+  // Commodity driver with multi-value support
+  if (step.driver === "commodity") {
+    const commValues = ruleValues || form.sampleCommodity;
+    let rule = buildMultiValueCondition('Document.CustomFieldValues("Commodity Code")', commValues, ruleLogic);
+    if (threshold > 0) rule += ` && [Document.TotalAmount() >= ${threshold}]`;
+    return rule || "true";
+  }
+  
+  // GL Account driver with multi-value support
+  if (step.driver === "glAccount") {
+    const glValues = ruleValues || form.sampleGl;
+    let rule = buildMultiValueCondition('Document.AccountCode()', glValues, ruleLogic);
+    if (threshold > 0) rule += ` && [Document.TotalAmount() >= ${threshold}]`;
+    return rule || "true";
+  }
+  
+  // Product/EHS driver
+  if (step.driver === "product") {
+    return `[Product.Toxin == true || Product.Hazardous == true]`;
+  }
+  
+  // Amount-only driver
+  return threshold > 0 ? `Document.TotalAmount() >= ${threshold}` : "true";
+};
+
+const buildWorkflowModel = (form) => {
+  const steps = [], activities = [], relationships = [], folders = [];
+  const addStep = (name, help) => { if (name && !steps.some(s => s.name === name)) steps.push({ name, help }); };
+  const addFolder = (name, type) => { if (name && !folders.some(f => f.name === name)) folders.push({ name, type }); };
+
+  // Add standard robot folders that are always needed
+  addFolder("Start Robot", "automated");
+  addFolder("End Robot", "automated");
+  
+  // START activity - automated robot step
+  activities.push({ 
+    name: "START", 
+    type: "start", 
+    folderRef: "Start Robot",
+    folderSelectionRule: "ExplicitFolder", 
+    rule: "",
+    attrs: [{ name: "wfActivityHelp", value: "Automated start point - initializes workflow routing" }]
+  });
+
+  form.approvals.forEach(step => {
+    const activityType = step.activityType || "manual";
+    
+    // Determine folder selection rule based on mode
+    let fsr = "ExplicitFolder";
+    if (step.mode === "adw") fsr = "MultiElementDynamic";
+    else if (step.mode === "dynamic" && step.driver === "department") fsr = "Department";
+    else if (step.mode === "customField") fsr = "CustomFieldValue";
+    
+    // Determine folder reference
+    // For automated/notification activities, always require a folder
+    let folderRef = "";
+    if (activityType === "automated") {
+      // Automated activities need robot folders
+      folderRef = step.folder || `${slugify(step.name)} Robot`;
+      addFolder(folderRef, "automated");
+    } else if (activityType === "notification") {
+      // Notification activities need notification folders
+      folderRef = step.folder || `${step.name} Notification`;
+      addFolder(folderRef, "shared");
+    } else if (fsr === "ExplicitFolder") {
+      // Manual static activities
+      folderRef = step.folder || "";
+      if (folderRef) addFolder(folderRef, "shared");
+    }
+    
+    const attrs = [];
+    
+    // Core routing attributes
+    if (step.mode === "adw") attrs.push({ name: "RuleGroupInternalName", value: step.ruleGroup || step.name });
+    if (step.mode === "customField" && step.customFieldName) attrs.push({ name: "wfFolderRuleCustomFieldName", value: step.customFieldName });
+    
+    // Approver configuration attributes
+    if (step.mode === "static" && step.approvers) {
+      attrs.push({ name: "wfApprovers", value: step.approvers });
+    }
+    if (step.mode === "dynamic" && step.departmentApprovers) {
+      attrs.push({ name: "wfDepartmentApprovers", value: step.departmentApprovers });
+    }
+    if (step.mode === "adw") {
+      // Process structured ADW rules if present
+      if (step.adwRules && step.adwRules.length > 0) {
+        const rulesConfig = step.adwRules.map((rule, idx) => {
+          const conditions = [];
+          if (rule.department) conditions.push(`Department=${rule.department}`);
+          if (rule.minAmount) conditions.push(`MinAmount=${rule.minAmount}`);
+          if (rule.maxAmount) conditions.push(`MaxAmount=${rule.maxAmount}`);
+          if (rule.commodity) conditions.push(`Commodity=${rule.commodity}`);
+          if (rule.glAccount) conditions.push(`GLAccount=${rule.glAccount}`);
+          if (rule.companyCode) conditions.push(`CompanyCode=${rule.companyCode}`);
+          return `Rule${idx + 1}: ${conditions.join(", ")} => ${rule.approvers || ""}`;
+        }).join("\n");
+        attrs.push({ name: "wfADWRulesConfig", value: rulesConfig });
+      }
+      if (step.adwApprovers) attrs.push({ name: "wfADWApprovers", value: step.adwApprovers });
+      if (step.defaultApprovers) attrs.push({ name: "wfDefaultApprovers", value: step.defaultApprovers });
+    }
+    if (step.mode === "customField" && step.customFieldApprovers) {
+      attrs.push({ name: "wfCustomFieldApprovers", value: step.customFieldApprovers });
+    }
+    
+    // Rule values for multi-value conditions
+    if (step.ruleValues) attrs.push({ name: "wfRuleValues", value: step.ruleValues });
+    if (step.ruleLogic && step.ruleLogic !== "in") attrs.push({ name: "wfRuleLogic", value: step.ruleLogic });
+    
+    // Help and support notes
+    const defaultHelp = activityType === "automated" 
+      ? `Automated robot action for ${step.name}.`
+      : activityType === "notification"
+      ? `Email notification for ${step.name}.`
+      : `${recommendMode(step)} approval driven by ${step.driver}.`;
+    attrs.push({ name: "wfActivityHelp", value: step.helpText || defaultHelp });
+    if (step.supportNote || form.includeExpiration) attrs.push({ name: "wfActivitySupportNote", value: step.supportNote || `Validate delegation and expiry handling by ${form.expiryMode}.` });
+
+    // Use manual override rule if set, otherwise auto-generate
+    const rule = step.manualRuleOverride && step.templateRule ? step.templateRule : buildRuleFromForm(form, step);
+
+    activities.push({ name: slugify(step.name), type: activityType, stepName: step.name, folderRef, folderSelectionRule: fsr, rule, attrs });
+    addStep(step.name, `Workflow step for ${step.name}.`);
+  });
+
+  if (["Healthcare", "Life Sciences"].includes(form.vertical)) {
+    activities.push({ name: "SafetyNotification", type: "notification", folderRef: "Safety Notification", folderSelectionRule: "ExplicitFolder", rule: `[Product.HazMat = true || Product.Controlled = true]`, attrs: [{ name: "wfActivityHelp", value: "Notification for regulated or hazardous items." }] });
+    addFolder("Safety Notification", "shared");
+  }
+
+  if (form.workflowType === "receipt" && form.useInventoryRobot) {
+    activities.push({ name: "CreateInventory", type: "automated", stepName: "Create Inventory Receipts", folderRef: "Create Inventory", folderSelectionRule: "ExplicitFolder", rule: "true", attrs: [{ name: "wfActivityHelp", value: "Automated inventory receipt creation." }] });
+    addStep("Create Inventory Receipts", "System step to create inventory receipts.");
+    addFolder("Create Inventory", "automated");
+  }
+
+  // END activity - automated robot step
+  activities.push({ 
+    name: "END", 
+    type: "end", 
+    folderRef: "End Robot",
+    folderSelectionRule: "ExplicitFolder", 
+    rule: "",
+    attrs: [{ name: "wfActivityHelp", value: "Automated end point - finalizes workflow and triggers completion actions" }]
+  });
+  
+  // Build activity relationships (sequential flow)
+  for (let i = 0; i < activities.length - 1; i++) {
+    relationships.push({ previous: activities[i].name, next: activities[i + 1].name });
+  }
+
+  return { steps, activities, relationships, folders };
+};
+
+const buildXmlFromForm = (form) => {
+  const model = buildWorkflowModel(form);
+  
+  // WorkflowSubType for contracts
+  const subtype = form.workflowType === "contract" ? "  <WorkflowSubType>Approval</WorkflowSubType>\n" : "";
+  
+  // Build Steps XML
+  const stepsXml = model.steps.map(s => {
+    return `  <Step name="${escapeXml(s.name)}">
+    <Attribute name="wfStepHelp">
+      <AttrValue lang="default">${escapeXml(s.help)}</AttrValue>
+    </Attribute>
+  </Step>`;
+  }).join("\n");
+  
+  // Build Folders XML (shared folders and robots)
+  const foldersXml = model.folders.map(f => {
+    const folderType = f.type === "automated" ? "robot" : "shared";
+    return `  <Folder name="${escapeXml(f.name)}" type="${folderType}">
+    <Attribute name="wfFolderHelp">
+      <AttrValue lang="default">${escapeXml(f.name)} folder</AttrValue>
+    </Attribute>
+  </Folder>`;
+  }).join("\n");
+  
+  // Build Activities XML
+  const activitiesXml = model.activities.map(a => {
+    const stepRef = a.stepName ? `\n    <StepRef name="${escapeXml(a.stepName)}" />` : "";
+    const folderRef = a.folderRef ? `\n    <FolderRef name="${escapeXml(a.folderRef)}" />` : "";
+    const attrs = (a.attrs || []).map(attr => `
+    <Attribute name="${escapeXml(attr.name)}">
+      <AttrValue lang="default">${escapeXml(attr.value)}</AttrValue>
+    </Attribute>`).join("");
+    const ruleXml = a.rule ? `<![CDATA[${a.rule}]]>` : "";
+    
+    return `  <Activity name="${escapeXml(a.name)}">
+    <ActivityType>${escapeXml(a.type)}</ActivityType>${stepRef}${folderRef}
+    <Rule>${ruleXml}</Rule>
+    <FolderSelectionRule>${escapeXml(a.folderSelectionRule)}</FolderSelectionRule>${attrs}
+  </Activity>`;
+  }).join("\n");
+  
+  // Build Activity Relationships XML
+  const relsXml = model.relationships.map(r => 
+    `  <ActivityRelationship previous="${escapeXml(r.previous)}" next="${escapeXml(r.next)}" />`
+  ).join("\n");
+  
+  // Assemble full XML document
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE ProcessDefinition SYSTEM "https://usertest.sciquest.com/app_docs/dtd/workflow/WorkflowDefinition.dtd">
+<ProcessDefinition>
+  <WorkflowType>${escapeXml(form.workflowType)}</WorkflowType>
+${subtype}  <Usable>true</Usable>
+  <Version>1</Version>
+  <VersionDescription>${escapeXml(form.versionDescription || "Generated by Jaggaer Workflow Studio")}</VersionDescription>
+
+  <!--====== Steps ======-->
+${stepsXml}
+
+  <!--====== Folders ======-->
+${foldersXml}
+
+  <!--====== Activities ======-->
+${activitiesXml}
+
+  <!--====== Activity Relationships ======-->
+${relsXml}
+</ProcessDefinition>`;
+};
+
+const questionnaireToForm = (q) => {
+  const approvals = [];
+  let stepId = 1;
+  
+  if (q.routeByDepartment) {
+    approvals.push({ 
+      id: stepId++, 
+      name: "Department Approval", 
+      activityType: "manual",
+      mode: "dynamic", 
+      driver: "department", 
+      threshold: "0", 
+      folder: q.departmentFolder || "",
+      departmentApprovers: q.departmentApprovers || "",
+      helpText: "Approval routed based on department code",
+      ruleGroup: "DepartmentApproval"
+    });
+  }
+  
+  if (q.routeByCommodity) {
+    approvals.push({ 
+      id: stepId++, 
+      name: "Commodity Review", 
+      activityType: "manual",
+      mode: "static", 
+      driver: "commodity", 
+      threshold: "0", 
+      folder: q.commodityFolder || "Commodity Review",
+      approvers: q.commodityApprovers || "",
+      helpText: "Review based on commodity category"
+    });
+  }
+  
+  if (q.routeByAmount) {
+    approvals.push({ 
+      id: stepId++, 
+      name: "High Value Approval", 
+      activityType: "manual",
+      mode: "adw", 
+      driver: "amount", 
+      threshold: q.highValueThreshold || "25000", 
+      folder: "",
+      ruleGroup: "HighValueApproval",
+      adwApprovers: q.amountApprovers || "",
+      defaultApprovers: q.defaultApprovers || "",
+      helpText: `Approval required for amounts >= ${q.highValueThreshold || "25000"}`
+    });
+  }
+  
+  if (q.routeByGl) {
+    approvals.push({ 
+      id: stepId++, 
+      name: "GL Approval", 
+      activityType: "manual",
+      mode: "static", 
+      driver: "glAccount", 
+      threshold: "0", 
+      folder: q.glFolder || "Finance Approval",
+      approvers: q.glApprovers || "",
+      helpText: "Finance approval based on GL account"
+    });
+  }
+  
+  // Add default step if none selected
+  if (approvals.length === 0) {
+    approvals.push({
+      id: 1,
+      name: "Default Approval",
+      activityType: "manual",
+      mode: "adw",
+      driver: "amount",
+      threshold: "0",
+      folder: "",
+      ruleGroup: "DefaultApproval",
+      helpText: "Default approval step"
+    });
+  }
+  
+  return { 
+    workflowType: q.workflowType, 
+    module: q.module, 
+    versionDescription: q.versionDescription || `${q.customerName || "Customer"} - Generated from questionnaire`, 
+    vertical: q.vertical, 
+    includeExpiration: q.includeExpiry, 
+    expiryMode: q.expiryMode || "department", 
+    useInventoryRobot: q.needsInventoryRobot, 
+    sampleDepartment: q.sampleDepartment || "Operations", 
+    sampleCommodity: q.sampleCommodity || "General", 
+    sampleGl: q.sampleGl || "1000", 
+    approvals 
+  };
+};
+
+// Parse XML back to form structure
+const parseXmlToForm = (xmlText) => {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlText, "text/xml");
+  
+  const workflowType = doc.querySelector("WorkflowType")?.textContent || "requisition";
+  const versionDescription = doc.querySelector("VersionDescription")?.textContent || "Imported workflow";
+  
+  // Find module from workflow type
+  let module = "eProcurement";
+  for (const [mod, types] of Object.entries(WORKFLOW_MODULES)) {
+    if (types.some(t => t.id === workflowType)) { module = mod; break; }
+  }
+  
+  // Parse activities to create approvals
+  const approvals = [];
+  let idCounter = 1;
+  
+  doc.querySelectorAll("Activity").forEach(act => {
+    const name = act.getAttribute("name");
+    const type = act.querySelector("ActivityType")?.textContent || "manual";
+    
+    // Skip START and END activities
+    if (type === "start" || type === "end") return;
+    
+    const stepRef = act.querySelector("StepRef")?.getAttribute("name") || name;
+    const folderRef = act.querySelector("FolderRef")?.getAttribute("name") || "";
+    const fsr = act.querySelector("FolderSelectionRule")?.textContent || "ExplicitFolder";
+    const rule = act.querySelector("Rule")?.textContent?.trim() || "";
+    
+    // Get RuleGroupInternalName
+    const ruleGroupAttr = act.querySelector('[name="RuleGroupInternalName"] AttrValue');
+    const ruleGroup = ruleGroupAttr ? ruleGroupAttr.textContent : "";
+    
+    // Get help text
+    const helpAttr = act.querySelector('[name="wfActivityHelp"] AttrValue');
+    const helpText = helpAttr ? helpAttr.textContent : "";
+    
+    // Get support note
+    const supportAttr = act.querySelector('[name="wfActivitySupportNote"] AttrValue');
+    const supportNote = supportAttr ? supportAttr.textContent : "";
+    
+    // Get custom field name for CustomFieldValue routing
+    const cfAttr = act.querySelector('[name="wfFolderRuleCustomFieldName"] AttrValue');
+    const customFieldName = cfAttr ? cfAttr.textContent : "";
+    
+    // Get approver configuration attributes
+    const approversAttr = act.querySelector('[name="wfApprovers"] AttrValue');
+    const approvers = approversAttr ? approversAttr.textContent : "";
+    
+    const deptApproversAttr = act.querySelector('[name="wfDepartmentApprovers"] AttrValue');
+    const departmentApprovers = deptApproversAttr ? deptApproversAttr.textContent : "";
+    
+    const adwApproversAttr = act.querySelector('[name="wfADWApprovers"] AttrValue');
+    const adwApprovers = adwApproversAttr ? adwApproversAttr.textContent : "";
+    
+    const defaultApproversAttr = act.querySelector('[name="wfDefaultApprovers"] AttrValue');
+    const defaultApprovers = defaultApproversAttr ? defaultApproversAttr.textContent : "";
+    
+    const cfApproversAttr = act.querySelector('[name="wfCustomFieldApprovers"] AttrValue');
+    const customFieldApprovers = cfApproversAttr ? cfApproversAttr.textContent : "";
+    
+    // Get rule values and logic
+    const ruleValuesAttr = act.querySelector('[name="wfRuleValues"] AttrValue');
+    const ruleValues = ruleValuesAttr ? ruleValuesAttr.textContent : "";
+    
+    const ruleLogicAttr = act.querySelector('[name="wfRuleLogic"] AttrValue');
+    const ruleLogic = ruleLogicAttr ? ruleLogicAttr.textContent : "in";
+    
+    // Determine mode based on FolderSelectionRule
+    let mode = "static";
+    if (fsr === "MultiElementDynamic") mode = "adw";
+    else if (fsr === "Department") mode = "dynamic";
+    else if (fsr === "CustomFieldValue") mode = "customField";
+    
+    // Determine driver from rule content
+    let driver = "amount";
+    if (rule.includes("RequiresDepartmentalApproval") || fsr === "Department") driver = "department";
+    else if (rule.includes("Commodity")) driver = "commodity";
+    else if (rule.includes("AccountCode") || rule.includes("acctElement") || fsr === "CustomFieldValue") driver = "glAccount";
+    else if (rule.includes("Product.Toxin") || rule.includes("Product.Hazardous")) driver = "product";
+    
+    // Extract threshold from rule if present
+    let threshold = "0";
+    const thresholdMatch = rule.match(/TotalAmount\(\)\s*>=\s*(\d+)/);
+    if (thresholdMatch) threshold = thresholdMatch[1];
+    
+    approvals.push({
+      id: idCounter++,
+      name: stepRef,
+      activityName: name,
+      activityType: type,
+      mode,
+      driver,
+      threshold,
+      folder: folderRef,
+      folderSelectionRule: fsr,
+      ruleGroup: ruleGroup,
+      customFieldName: customFieldName,
+      templateRule: rule,
+      manualRuleOverride: !!rule, // If rule exists from import, treat as manual override
+      helpText: helpText,
+      supportNote: supportNote,
+      // Approver fields
+      approvers: approvers,
+      departmentApprovers: departmentApprovers,
+      adwApprovers: adwApprovers,
+      defaultApprovers: defaultApprovers,
+      customFieldApprovers: customFieldApprovers,
+      // Rule configuration
+      ruleValues: ruleValues,
+      ruleLogic: ruleLogic,
+      importedApprover: folderRef || ruleGroup || stepRef,
+    });
+  });
+  
+  // Check for inventory robot
+  const hasInventory = approvals.some(a => a.folder === "Create Inventory" || a.name.includes("Inventory"));
+  
+  return {
+    workflowType,
+    module,
+    versionDescription,
+    vertical: "Manufacturing",
+    includeExpiration: true,
+    expiryMode: "department",
+    useInventoryRobot: hasInventory,
+    sampleDepartment: "Operations",
+    sampleCommodity: "Capex Equipment",
+    sampleGl: "1505",
+    approvals: approvals.length > 0 ? approvals : BUILDER_DEFAULTS.approvals,
+  };
+};
+
+const validateXml = (xml) => {
+  const issues = [];
+  
+  // Check for required root elements
+  if (!xml.includes("<?xml version")) issues.push("Missing XML declaration.");
+  if (!xml.includes("<!DOCTYPE ProcessDefinition")) issues.push("Missing DOCTYPE declaration.");
+  if (!xml.includes("<ProcessDefinition>")) issues.push("Missing <ProcessDefinition> root element.");
+  if (!xml.includes("</ProcessDefinition>")) issues.push("Unclosed <ProcessDefinition> element.");
+  
+  // Check for required workflow elements
+  if (!xml.includes("<WorkflowType>")) issues.push("Missing <WorkflowType> element.");
+  if (!xml.includes("<Usable>")) issues.push("Missing <Usable> element.");
+  if (!xml.includes("<Version>")) issues.push("Missing <Version> element.");
+  if (!xml.includes("<VersionDescription>")) issues.push("Missing <VersionDescription> element.");
+  
+  // Check for required activities
+  if (!xml.includes('name="START"')) issues.push("Missing START activity.");
+  if (!xml.includes('name="END"')) issues.push("Missing END activity.");
+  
+  // Check for activity structure
+  if (!xml.includes("<Activity")) issues.push("No activities defined.");
+  if (!xml.includes("<ActivityType>")) issues.push("Activities missing <ActivityType>.");
+  if (!xml.includes("<FolderSelectionRule>")) issues.push("Activities missing <FolderSelectionRule>.");
+  
+  // Check for relationships
+  if (!xml.includes("<ActivityRelationship")) issues.push("Missing activity relationships.");
+  
+  // Check for steps (at least one should exist for non-trivial workflows)
+  const activityCount = (xml.match(/<Activity /g) || []).length;
+  const stepCount = (xml.match(/<Step /g) || []).length;
+  if (activityCount > 2 && stepCount === 0) issues.push("No workflow steps defined.");
+  
+  // Check for well-formed XML
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xml, "text/xml");
+    const parseError = doc.querySelector("parsererror");
+    if (parseError) issues.push("XML parsing error: " + parseError.textContent.slice(0, 100));
+  } catch (e) {
+    issues.push("Invalid XML structure.");
+  }
+  
+  return issues;
+};
+
+const download = (name, text) => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text])); a.download = name; a.click(); };
+
+// ============ COMPONENTS ============
+const Section = ({ title, subtitle, children, borderColor = "border-slate-200" }) => (
+  <div className={`rounded-3xl border-4 ${borderColor} bg-white p-4 shadow-sm`}>
+    <div className="mb-3">
+      <div className="text-base font-semibold text-slate-900">{title}</div>
+      {subtitle && <div className="mt-1 text-sm text-slate-500">{subtitle}</div>}
+    </div>
+    {children}
+  </div>
+);
+
+const SmallTag = ({ children }) => <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700">{children}</span>;
+
+// ============ VISUAL WORKFLOW DASHBOARD ============
+const VisualWorkflowDashboard = ({ form, title, subtitle }) => {
+  const model = useMemo(() => buildWorkflowModel(form), [form]);
+  const wfInfo = Object.values(WORKFLOW_MODULES).flat().find(w => w.id === form.workflowType) || { name: form.workflowType, desc: "" };
+
+  const kindStyle = (kind) => {
+    if (kind === "start" || kind === "end") return "border-slate-400 bg-slate-100 text-slate-700";
+    if (kind === "automated") return "border-emerald-400 bg-emerald-50 text-emerald-800";
+    if (kind === "notification") return "border-amber-400 bg-amber-50 text-amber-800";
+    return "border-sky-400 bg-sky-50 text-sky-800";
+  };
+
+  return (
+    <Section title={title} subtitle={subtitle} borderColor="border-sky-500">
+      {/* Header Summary */}
+      <div className="mb-4 rounded-2xl bg-gradient-to-r from-slate-800 to-slate-700 p-4 text-white">
+        <div className="flex justify-between items-start">
+          <div>
+            <div className="text-xs text-slate-300 uppercase tracking-wide">{form.module || "eProcurement"}</div>
+            <div className="text-xl font-bold">{wfInfo.name}</div>
+            <div className="text-sm text-slate-300 mt-1">{form.versionDescription}</div>
+          </div>
+          <div className="text-right">
+            <div className="text-3xl font-bold">{model.steps.length}</div>
+            <div className="text-xs text-slate-300">Approval Steps</div>
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <span className="px-2 py-1 bg-white/10 rounded text-xs">{form.vertical}</span>
+          <span className="px-2 py-1 bg-white/10 rounded text-xs">{model.activities.length} Activities (incl. START/END)</span>
+          <span className="px-2 py-1 bg-white/10 rounded text-xs">{model.folders.filter(f => f.type === "automated").length} Robot Folders</span>
+          <span className="px-2 py-1 bg-white/10 rounded text-xs">{model.folders.filter(f => f.type === "shared").length} Shared Folders</span>
+        </div>
+      </div>
+
+      {/* Simple Text Description - Plain English */}
+      <div className="rounded-2xl border-2 border-indigo-300 bg-indigo-50/50 p-4 mb-4">
+        <div className="mb-3 text-sm font-semibold text-indigo-900 flex items-center gap-2">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+          Workflow Summary (Plain Text)
+        </div>
+        <div className="bg-white rounded-xl p-4 text-sm text-slate-700 space-y-2 font-mono">
+          {/* START Robot */}
+          <div className="border-l-4 border-slate-400 pl-3 py-1 bg-slate-50 rounded-r">
+            <div className="font-semibold text-slate-700">🤖 START (Robot)</div>
+            <div className="text-slate-500 text-xs">Automated workflow initialization → Folder: "Start Robot"</div>
+          </div>
+          
+          {model.activities.filter(a => a.type !== "start" && a.type !== "end").map((a, i) => {
+            const describeRouting = (fsr, folderRef, rule) => {
+              if (fsr === "Department") return "routes to Department Approvers";
+              if (fsr === "MultiElementDynamic") return "routes via ADW Rule Group";
+              if (fsr === "CustomFieldValue") return "routes based on Custom Field value";
+              if (fsr === "ExplicitFolder" && folderRef) return `routes to folder "${folderRef}"`;
+              return "static routing";
+            };
+            const describeType = (type) => {
+              if (type === "automated") return "🤖 AUTOMATED";
+              if (type === "notification") return "📧 NOTIFICATION";
+              return "👤 MANUAL";
+            };
+            const describeCondition = (rule) => {
+              if (!rule || rule === "true") return "Always executes";
+              if (rule.includes("RequiresRuleGroupEvaluation")) {
+                const match = rule.match(/RequiresRuleGroupEvaluation\("([^"]+)"\)/);
+                return match ? `When ADW Rule Group "${match[1]}" matches` : "When ADW rules match";
+              }
+              if (rule.includes("RequiresDepartmentalApproval")) return "When department approval is required";
+              if (rule.includes("RequiresCustomFieldValueApproval")) return "When custom field approval is required";
+              if (rule.includes("Product.Toxin") || rule.includes("Product.Hazardous")) return "When product is Toxic or Hazardous";
+              if (rule.includes("TotalAmount")) {
+                const match = rule.match(/TotalAmount\(\)\s*>=\s*(\d+)/);
+                return match ? `When amount >= $${Number(match[1]).toLocaleString()}` : "Based on amount threshold";
+              }
+              return "Conditional";
+            };
+            return (
+              <div key={a.name} className="border-l-4 border-indigo-300 pl-3 py-1">
+                <div className="font-semibold text-slate-900">
+                  Step {i + 1}: {a.stepName || a.name}
+                </div>
+                <div className="text-slate-600 text-xs mt-1">
+                  {describeType(a.type)} • {describeRouting(a.folderSelectionRule, a.folderRef, a.rule)}
+                </div>
+                <div className="text-indigo-600 text-xs mt-0.5">
+                  ↳ {describeCondition(a.rule)}
+                </div>
+              </div>
+            );
+          })}
+          
+          {/* END Robot */}
+          <div className="border-l-4 border-slate-400 pl-3 py-1 bg-slate-50 rounded-r">
+            <div className="font-semibold text-slate-700">🤖 END (Robot)</div>
+            <div className="text-slate-500 text-xs">Automated workflow completion → Folder: "End Robot"</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Visual Workflow Flow */}
+      <div className="rounded-2xl border-2 border-sky-200 bg-sky-50/30 p-4 mb-4">
+        <div className="mb-2 text-sm font-semibold text-slate-700">Visual Workflow Flow</div>
+        <div className="overflow-x-auto pb-2">
+          <div className="flex min-w-max items-center gap-2">
+            {model.activities.map((a, i) => (
+              <Fragment key={a.name}>
+                <div className={`min-w-[140px] rounded-2xl border-2 px-4 py-3 text-center shadow-sm ${kindStyle(a.type)}`}>
+                  <div className="font-semibold text-sm">{a.stepName || a.name}</div>
+                  <div className="text-[10px] opacity-70 mt-1">{a.type}</div>
+                  {a.folderRef && <div className="text-[9px] mt-1 bg-white/60 rounded px-1 py-0.5">→ {a.folderRef}</div>}
+                  {a.folderSelectionRule === "MultiElementDynamic" && <div className="text-[9px] mt-1 bg-amber-100 rounded px-1 py-0.5">ADW</div>}
+                  {a.folderSelectionRule === "Department" && <div className="text-[9px] mt-1 bg-blue-100 rounded px-1 py-0.5">Dept</div>}
+                </div>
+                {i < model.activities.length - 1 && <div className="text-slate-400 text-lg">→</div>}
+              </Fragment>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Approvers & Routing Summary */}
+      <div className="rounded-2xl border-2 border-green-300 bg-green-50/50 p-4 mb-4">
+        <div className="mb-3 text-sm font-semibold text-green-900">Approvers & Routing Configuration</div>
+        <div className="grid gap-3 md:grid-cols-2">
+          {form.approvals.filter(a => a.activityType !== "automated").map((a, idx) => (
+            <div key={a.id} className={`bg-white rounded-xl p-3 border-2 ${a.mode === "static" ? "border-green-200" : a.mode === "dynamic" ? "border-blue-200" : a.mode === "adw" ? "border-amber-200" : "border-purple-200"}`}>
+              <div className="flex items-center gap-2 mb-2">
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] ${a.mode === "static" ? "bg-green-600" : a.mode === "dynamic" ? "bg-blue-600" : a.mode === "adw" ? "bg-amber-600" : "bg-purple-600"}`}>
+                  {idx + 1}
+                </span>
+                <div className="font-semibold text-sm text-slate-900">{a.name}</div>
+              </div>
+              <div className="text-xs space-y-1">
+                {a.mode === "static" && (
+                  <>
+                    <div className="text-green-700">📁 <strong>Folder:</strong> {a.folder || "[Not Set]"}</div>
+                    <div className="text-green-600">
+                      <strong>Approvers:</strong> {a.approvers ? a.approvers.split(",").map(ap => ap.trim()).join(", ") : "[None configured]"}
+                    </div>
+                  </>
+                )}
+                {a.mode === "dynamic" && (
+                  <>
+                    <div className="text-blue-700">👥 <strong>Department Routing</strong></div>
+                    <div className="text-blue-600">
+                      {(() => {
+                        const lines = (a.departmentApprovers || "").split("\n").filter(l => l.includes("="));
+                        if (lines.length === 0) return "[No departments configured]";
+                        return lines.slice(0, 3).map(l => {
+                          const [dept, approvers] = l.split("=").map(s => s.trim());
+                          return `Dept ${dept}: ${approvers}`;
+                        }).join("; ") + (lines.length > 3 ? ` (+${lines.length - 3} more)` : "");
+                      })()}
+                    </div>
+                  </>
+                )}
+                {a.mode === "adw" && (
+                  <>
+                    <div className="text-amber-700">⚙️ <strong>Rule Group:</strong> {a.ruleGroup || a.name}</div>
+                    <div className="text-amber-600">
+                      {(() => {
+                        const lines = (a.adwApprovers || "").split("\n").filter(l => l.includes("="));
+                        if (lines.length === 0) return a.defaultApprovers ? `Default: ${a.defaultApprovers}` : "[No approvers configured]";
+                        return `${lines.length} condition(s)` + (a.defaultApprovers ? `, Default: ${a.defaultApprovers}` : "");
+                      })()}
+                    </div>
+                  </>
+                )}
+                {a.mode === "customField" && (
+                  <>
+                    <div className="text-purple-700">🏷️ <strong>Field:</strong> {a.customFieldName || "[Not Set]"}</div>
+                    <div className="text-purple-600">
+                      {(() => {
+                        const lines = (a.customFieldApprovers || "").split("\n").filter(l => l.includes("="));
+                        return lines.length > 0 ? `${lines.length} value(s) configured` : "[No approvers configured]";
+                      })()}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Automated Actions */}
+      {model.activities.filter(a => a.type === "automated").length > 0 && (
+        <div className="rounded-2xl border-2 border-orange-300 bg-orange-50/50 p-4 mb-4">
+          <div className="mb-3 text-sm font-semibold text-orange-900">🤖 Automated Actions (Robots)</div>
+          <div className="grid gap-2 md:grid-cols-2">
+            {model.activities.filter(a => a.type === "automated").map(a => (
+              <div key={a.name} className="bg-white rounded-xl p-3 border border-orange-200">
+                <div className="font-semibold text-sm text-slate-900">{a.stepName || a.name}</div>
+                <div className="text-xs text-slate-600 mt-1">
+                  Folder: <span className="font-medium">{a.folderRef || "N/A"}</span>
+                </div>
+                <div className="text-xs text-orange-600 mt-0.5">
+                  {a.folderRef === "Create PO" && "Creates Purchase Orders"}
+                  {a.folderRef === "Create Inventory" && "Creates Inventory Receipts"}
+                  {a.folderRef === "Compile File" && "Compiles Contract Document"}
+                  {a.folderRef === "Auto-Return" && "Auto-returns to requester"}
+                  {!["Create PO", "Create Inventory", "Compile File", "Auto-Return"].includes(a.folderRef) && "Automated system action"}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Folders Required */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border-2 border-emerald-200 bg-white p-4">
+          <div className="mb-2 text-sm font-semibold text-slate-900">📁 Folders to Create in Jaggaer</div>
+          {model.folders.length === 0 ? <div className="text-sm text-slate-400">No folders required.</div> : (
+            <div className="space-y-2">
+              {/* Robot Folders */}
+              {model.folders.filter(f => f.type === "automated").length > 0 && (
+                <div>
+                  <div className="text-xs font-medium text-orange-700 mb-1">🤖 Robot Folders:</div>
+                  <div className="flex flex-wrap gap-1">
+                    {model.folders.filter(f => f.type === "automated").map(f => (
+                      <span key={f.name} className="px-2 py-0.5 bg-orange-100 text-orange-800 rounded text-xs font-medium">{f.name}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Shared Folders */}
+              {model.folders.filter(f => f.type === "shared").length > 0 && (
+                <div>
+                  <div className="text-xs font-medium text-emerald-700 mb-1">👥 Shared Folders:</div>
+                  <div className="flex flex-wrap gap-1">
+                    {model.folders.filter(f => f.type === "shared").map(f => (
+                      <span key={f.name} className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded text-xs font-medium">{f.name}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="rounded-2xl border-2 border-purple-200 bg-white p-4">
+          <div className="mb-2 text-sm font-semibold text-slate-900">🔗 Flow Sequence</div>
+          <div className="text-sm text-slate-700 flex flex-wrap items-center gap-1">
+            <span className="px-2 py-0.5 bg-slate-200 text-slate-700 rounded text-xs font-bold">START</span>
+            <span>→</span>
+            {form.approvals.map((a, i) => (
+              <Fragment key={a.id}>
+                <span className={`px-2 py-0.5 rounded text-xs font-medium ${a.activityType === "automated" ? "bg-orange-100 text-orange-700" : a.activityType === "notification" ? "bg-amber-100 text-amber-700" : "bg-sky-100 text-sky-700"}`}>
+                  {slugify(a.name)}
+                </span>
+                <span>→</span>
+              </Fragment>
+            ))}
+            <span className="px-2 py-0.5 bg-slate-200 text-slate-700 rounded text-xs font-bold">END</span>
+          </div>
+        </div>
+      </div>
+    </Section>
+  );
+};
+
+// ============ BUILDER MODE ============
+const BuilderMode = ({ form, setForm, xmlDraft, setXmlDraft }) => {
+  const [importStatus, setImportStatus] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(true);
+  const [currentGuideStep, setCurrentGuideStep] = useState(0);
+  const model = useMemo(() => buildWorkflowModel(form), [form]);
+  const validationIssues = useMemo(() => validateXml(xmlDraft), [xmlDraft]);
+  
+  // Get suggestions based on workflow type
+  const suggestions = WORKFLOW_SUGGESTIONS[form.workflowType] || null;
+  
+  // Calculate current guide step based on form state
+  const guideSteps = ["Configure", "Add Steps", "Set Rules", "Export"];
+  const calculatedStep = useMemo(() => {
+    if (!form.workflowType) return 0;
+    if (form.approvals.length === 0) return 1;
+    if (form.approvals.some(a => !a.mode || !a.driver)) return 2;
+    return 3;
+  }, [form]);
+  
+  // Get next step message
+  const getNextStepMessage = () => {
+    if (!form.workflowType) return "Start by selecting a Module and Workflow Type above";
+    if (form.approvals.length === 0) return "Add your first approval step to get started";
+    if (form.approvals.length < 2) return "Consider adding more approval steps for a complete workflow";
+    if (validationIssues.length > 0) return "Review and fix validation issues before exporting";
+    return "Your workflow is ready! Click 'Export XML' to download";
+  };
+  
+  // Apply a suggested step
+  const applySuggestion = (suggestion) => {
+    setForm(c => ({
+      ...c,
+      approvals: [...c.approvals, {
+        id: Date.now(),
+        name: suggestion.name,
+        activityType: suggestion.activityType || "manual",
+        mode: suggestion.mode,
+        driver: suggestion.driver,
+        threshold: suggestion.threshold || "0",
+        folder: suggestion.folder || "",
+        helpText: suggestion.description
+      }]
+    }));
+  };
+  
+  // Apply all suggested steps
+  const applyAllSuggestions = () => {
+    if (!suggestions) return;
+    setForm(c => ({
+      ...c,
+      approvals: suggestions.suggestedSteps.map((s, i) => ({
+        id: Date.now() + i,
+        name: s.name,
+        activityType: s.activityType || "manual",
+        mode: s.mode,
+        driver: s.driver,
+        threshold: s.threshold || "0",
+        folder: s.folder || "",
+        helpText: s.description
+      }))
+    }));
+    setShowSuggestions(false);
+  };
+
+  const updateApproval = (id, patch) => setForm(c => ({ ...c, approvals: c.approvals.map(a => a.id === id ? { ...a, ...patch } : a) }));
+  const regenerateXml = () => setXmlDraft(buildXmlFromForm(form));
+
+  const handleXmlFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = parseXmlToForm(text);
+      setForm(parsed);
+      setXmlDraft(text);
+      setImportStatus(`✓ Loaded "${file.name}" - ${parsed.approvals.length} approval steps imported`);
+      setTimeout(() => setImportStatus(""), 5000);
+    } catch (err) {
+      setImportStatus(`✗ Error loading file: ${err.message}`);
+    }
+  };
+
+  const handleXmlPaste = () => {
+    try {
+      const parsed = parseXmlToForm(xmlDraft);
+      setForm(parsed);
+      setImportStatus(`✓ Parsed XML - ${parsed.approvals.length} approval steps imported`);
+      setTimeout(() => setImportStatus(""), 5000);
+    } catch (err) {
+      setImportStatus(`✗ Error parsing XML: ${err.message}`);
+    }
+  };
+
+  // Move step/activity up or down
+  const moveStep = (id, direction) => {
+    setForm(c => {
+      const idx = c.approvals.findIndex(a => a.id === id);
+      if (idx === -1) return c;
+      const newIdx = direction === "up" ? idx - 1 : idx + 1;
+      if (newIdx < 0 || newIdx >= c.approvals.length) return c;
+      const newApprovals = [...c.approvals];
+      [newApprovals[idx], newApprovals[newIdx]] = [newApprovals[newIdx], newApprovals[idx]];
+      return { ...c, approvals: newApprovals };
+    });
+  };
+
+  // Insert step at specific position
+  const insertStepAt = (afterId, newStep) => {
+    setForm(c => {
+      const idx = c.approvals.findIndex(a => a.id === afterId);
+      const newApprovals = [...c.approvals];
+      newApprovals.splice(idx + 1, 0, newStep);
+      return { ...c, approvals: newApprovals };
+    });
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Progress Guide */}
+      <div className="rounded-3xl bg-gradient-to-r from-slate-50 to-sky-50 border border-slate-200 p-4">
+        <GuidedSteps currentStep={calculatedStep} steps={guideSteps} />
+        <NextStepBanner 
+          message={getNextStepMessage()} 
+          action={calculatedStep === 3 && validationIssues.length === 0 ? "Export XML" : null}
+          onAction={() => download(`${form.workflowType}-workflow.xml`, xmlDraft)}
+        />
+      </div>
+
+      {/* Dashboard at top - full width */}
+      <VisualWorkflowDashboard form={form} title="Workflow Dashboard" subtitle="Visual representation of the workflow structure" />
+
+      {/* Import existing XML */}
+      <div className="rounded-3xl border-4 border-sky-500 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex-1">
+            <div className="text-base font-semibold text-slate-900">Import Existing Workflow</div>
+            <div className="text-sm text-slate-500">Load an XML file to edit or modify an existing workflow</div>
+          </div>
+          <label className="cursor-pointer">
+            <input type="file" accept=".xml" onChange={handleXmlFileUpload} className="hidden" />
+            <span className="inline-flex items-center gap-2 rounded-2xl bg-sky-600 px-6 py-3 text-sm font-semibold text-white hover:bg-sky-700 transition">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+              Import XML
+            </span>
+          </label>
+          <button onClick={handleXmlPaste} className="rounded-2xl border-2 border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">Parse from Editor</button>
+        </div>
+        {importStatus && (
+          <div className={`mt-3 rounded-2xl p-3 text-sm ${importStatus.startsWith("✓") ? "bg-emerald-50 border border-emerald-200 text-emerald-800" : "bg-red-50 border border-red-200 text-red-800"}`}>
+            {importStatus}
+          </div>
+        )}
+      </div>
+
+      {/* Section 1: Workflow Configuration */}
+      <Section title="1. Workflow Configuration" subtitle="Define the workflow type, module, and version settings." borderColor="border-slate-400">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <label className="text-sm">
+            <div className="mb-1 font-medium flex items-center">Module <HelpIcon helpKey="module" /></div>
+            <select value={form.module} onChange={e => { setForm(c => ({ ...c, module: e.target.value, workflowType: WORKFLOW_MODULES[e.target.value][0].id })); setShowSuggestions(true); }} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none">
+              {Object.keys(WORKFLOW_MODULES).map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </label>
+          <label className="text-sm">
+            <div className="mb-1 font-medium flex items-center">Workflow Type <HelpIcon helpKey="workflowType" /></div>
+            <select value={form.workflowType} onChange={e => { setForm(c => ({ ...c, workflowType: e.target.value })); setShowSuggestions(true); }} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none">
+              {WORKFLOW_MODULES[form.module]?.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+            </select>
+          </label>
+          <label className="text-sm">
+            <div className="mb-1 font-medium flex items-center">Vertical / Industry <HelpIcon helpKey="vertical" /></div>
+            <select value={form.vertical} onChange={e => setForm(c => ({ ...c, vertical: e.target.value }))} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none">
+              {Object.keys(VERTICALS).map(v => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </label>
+          <label className="text-sm">
+            <div className="mb-1 font-medium">Version Description</div>
+            <input value={form.versionDescription} onChange={e => setForm(c => ({ ...c, versionDescription: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none" placeholder="e.g., Add EHS Static Step" />
+          </label>
+        </div>
+        <div className="mt-4 pt-4 border-t border-slate-200">
+          <div className="text-sm font-medium text-slate-700 mb-2">Sample Values (for rule generation)</div>
+          <div className="grid gap-3 md:grid-cols-4">
+            <label className="text-sm">
+              <div className="mb-1 text-slate-500">Sample Department</div>
+              <input value={form.sampleDepartment} onChange={e => setForm(c => ({ ...c, sampleDepartment: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none text-sm" />
+            </label>
+            <label className="text-sm">
+              <div className="mb-1 text-slate-500">Sample Commodity</div>
+              <input value={form.sampleCommodity} onChange={e => setForm(c => ({ ...c, sampleCommodity: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none text-sm" />
+            </label>
+            <label className="text-sm">
+              <div className="mb-1 text-slate-500">Sample GL Account</div>
+              <input value={form.sampleGl} onChange={e => setForm(c => ({ ...c, sampleGl: e.target.value }))} className="w-full rounded-xl border border-slate-200 px-3 py-2 outline-none text-sm" />
+            </label>
+            <label className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm">
+              <input type="checkbox" checked={form.useInventoryRobot} onChange={e => setForm(c => ({ ...c, useInventoryRobot: e.target.checked }))} /> Include Inventory Robot
+            </label>
+          </div>
+        </div>
+        
+        {/* Workflow Type Description */}
+        {WORKFLOW_MODULES[form.module]?.find(w => w.id === form.workflowType)?.desc && (
+          <div className="mt-4 rounded-xl bg-sky-50 border border-sky-200 p-3 text-sm text-sky-800">
+            <strong>ℹ️ {WORKFLOW_MODULES[form.module]?.find(w => w.id === form.workflowType)?.name}:</strong> {WORKFLOW_MODULES[form.module]?.find(w => w.id === form.workflowType)?.desc}
+          </div>
+        )}
+      </Section>
+
+      {/* Suggested Steps Panel */}
+      {showSuggestions && suggestions && (
+        <Section title="💡 Suggested Steps" subtitle={`Common approval steps for ${suggestions.name}. Click to add or use 'Apply All' for quick setup.`} borderColor="border-emerald-400">
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            {suggestions.suggestedSteps.map((s, i) => (
+              <SuggestionCard key={i} suggestion={s} onApply={() => applySuggestion(s)} />
+            ))}
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button onClick={applyAllSuggestions} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">
+              ✨ Apply All Suggested Steps
+            </button>
+            <button onClick={() => setShowSuggestions(false)} className="text-sm text-slate-500 hover:text-slate-700">
+              Hide suggestions
+            </button>
+          </div>
+          {suggestions.tips && suggestions.tips.length > 0 && (
+            <div className="mt-4 rounded-xl bg-amber-50 border border-amber-200 p-3">
+              <div className="text-sm font-medium text-amber-800 mb-1">💡 Tips for this workflow type:</div>
+              <ul className="text-xs text-amber-700 space-y-1">
+                {suggestions.tips.map((tip, i) => <li key={i}>• {tip}</li>)}
+              </ul>
+            </div>
+          )}
+        </Section>
+      )}
+
+      {/* Section 2: Steps Builder */}
+      <Section title="2. Steps Builder" subtitle="Define the workflow steps. Use arrows to reorder, or click + to insert after a step." borderColor="border-sky-400">
+        <div className="space-y-2">
+          {form.approvals.map((a, idx) => (
+            <div key={a.id} className="rounded-xl border border-sky-200 bg-sky-50 p-3 flex items-center gap-2">
+              {/* Move buttons */}
+              <div className="flex flex-col gap-0.5">
+                <button 
+                  onClick={() => moveStep(a.id, "up")} 
+                  disabled={idx === 0}
+                  className={`w-6 h-5 rounded flex items-center justify-center text-xs ${idx === 0 ? "bg-slate-100 text-slate-300 cursor-not-allowed" : "bg-sky-200 text-sky-700 hover:bg-sky-300"}`}
+                  title="Move up"
+                >▲</button>
+                <button 
+                  onClick={() => moveStep(a.id, "down")} 
+                  disabled={idx === form.approvals.length - 1}
+                  className={`w-6 h-5 rounded flex items-center justify-center text-xs ${idx === form.approvals.length - 1 ? "bg-slate-100 text-slate-300 cursor-not-allowed" : "bg-sky-200 text-sky-700 hover:bg-sky-300"}`}
+                  title="Move down"
+                >▼</button>
+              </div>
+              
+              {/* Step number */}
+              <span className="w-7 h-7 rounded-full bg-sky-600 text-white text-xs flex items-center justify-center font-bold flex-shrink-0">{idx + 1}</span>
+              
+              {/* Step name */}
+              <input value={a.name} onChange={e => updateApproval(a.id, { name: e.target.value })} className="flex-1 rounded-lg border border-sky-200 px-3 py-1.5 text-sm font-medium outline-none bg-white min-w-0" />
+              
+              {/* Type badges */}
+              <div className="hidden sm:flex items-center gap-1 flex-shrink-0">
+                <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${a.activityType === "automated" ? "bg-orange-100 text-orange-700" : a.activityType === "notification" ? "bg-purple-100 text-purple-700" : "bg-sky-100 text-sky-700"}`}>
+                  {a.activityType === "automated" ? "🤖" : a.activityType === "notification" ? "📧" : "👤"}
+                </span>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${a.mode === "adw" ? "bg-amber-100 text-amber-700" : a.mode === "dynamic" ? "bg-blue-100 text-blue-700" : a.mode === "customField" ? "bg-purple-100 text-purple-700" : "bg-green-100 text-green-700"}`}>
+                  {a.mode === "adw" ? "ADW" : a.mode === "dynamic" ? "Dept" : a.mode === "customField" ? "CF" : "Static"}
+                </span>
+              </div>
+              
+              {/* Insert after button */}
+              <button 
+                onClick={() => insertStepAt(a.id, { id: Date.now(), name: `New Step`, activityType: "manual", mode: "adw", driver: "amount", threshold: "0", folder: "" })} 
+                className="w-7 h-7 rounded-full bg-emerald-500 text-white text-sm flex items-center justify-center hover:bg-emerald-600 flex-shrink-0"
+                title="Insert step after this one"
+              >+</button>
+              
+              {/* Delete button */}
+              <button 
+                onClick={() => setForm(c => ({ ...c, approvals: c.approvals.filter(x => x.id !== a.id) }))} 
+                className="w-7 h-7 rounded-full bg-red-100 text-red-500 text-sm flex items-center justify-center hover:bg-red-200 flex-shrink-0"
+                title="Remove step"
+              >×</button>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button onClick={() => setForm(c => ({ ...c, approvals: [...c.approvals, { id: Date.now(), name: `Step ${c.approvals.length + 1}`, activityType: "manual", mode: "adw", driver: "amount", threshold: "0", folder: "" }] }))} className="rounded-xl bg-sky-600 px-4 py-2 text-sm font-medium text-white">+ Add Step at End</button>
+          <button onClick={() => setForm(c => ({ ...c, approvals: [{ id: Date.now(), name: `Step 1`, activityType: "manual", mode: "adw", driver: "amount", threshold: "0", folder: "" }, ...c.approvals] }))} className="rounded-xl border-2 border-sky-300 bg-white px-4 py-2 text-sm font-medium text-sky-700">+ Add Step at Beginning</button>
+        </div>
+      </Section>
+
+      {/* Section 3: Activity Builder */}
+      <Section title="3. Activity Builder" subtitle="Configure each activity with routing rules, folders, and conditions. Use arrows to reorder." borderColor="border-amber-400">
+        <div className="space-y-4 max-h-[700px] overflow-auto pr-1">
+          {form.approvals.map((a, idx) => (
+            <div key={a.id} className={`rounded-2xl border-2 p-4 ${a.activityType === "automated" ? "border-orange-300 bg-orange-50" : a.activityType === "notification" ? "border-purple-300 bg-purple-50" : a.mode === "adw" ? "border-amber-300 bg-amber-50" : a.mode === "dynamic" ? "border-blue-300 bg-blue-50" : "border-slate-300 bg-slate-50"}`}>
+              <div className="flex items-center gap-3 mb-4 pb-3 border-b border-slate-200">
+                {/* Move buttons for Activity */}
+                <div className="flex flex-col gap-0.5">
+                  <button 
+                    onClick={() => moveStep(a.id, "up")} 
+                    disabled={idx === 0}
+                    className={`w-7 h-6 rounded flex items-center justify-center text-xs font-bold ${idx === 0 ? "bg-slate-100 text-slate-300 cursor-not-allowed" : "bg-amber-200 text-amber-700 hover:bg-amber-300"}`}
+                    title="Move activity up"
+                  >▲</button>
+                  <button 
+                    onClick={() => moveStep(a.id, "down")} 
+                    disabled={idx === form.approvals.length - 1}
+                    className={`w-7 h-6 rounded flex items-center justify-center text-xs font-bold ${idx === form.approvals.length - 1 ? "bg-slate-100 text-slate-300 cursor-not-allowed" : "bg-amber-200 text-amber-700 hover:bg-amber-300"}`}
+                    title="Move activity down"
+                  >▼</button>
+                </div>
+                <span className="w-8 h-8 rounded-full bg-slate-800 text-white text-sm flex items-center justify-center font-bold">{idx + 1}</span>
+                <div className="flex-1">
+                  <div className="font-semibold text-slate-900 text-lg">{a.name}</div>
+                  <div className="text-xs text-slate-500">Activity: {a.activityName || slugify(a.name)}</div>
+                </div>
+                <span className={`px-3 py-1 rounded-full text-xs font-medium ${a.activityType === "automated" ? "bg-orange-200 text-orange-800" : a.activityType === "notification" ? "bg-purple-200 text-purple-800" : a.mode === "adw" ? "bg-amber-200 text-amber-800" : a.mode === "dynamic" ? "bg-blue-200 text-blue-800" : "bg-slate-200 text-slate-700"}`}>
+                  {a.activityType === "automated" ? "🤖 Automated" : a.activityType === "notification" ? "📧 Notification" : a.mode === "adw" ? "⚙️ ADW" : a.mode === "dynamic" ? "👥 Department" : "📁 Static"}
+                </span>
+                {/* Insert after and Delete buttons */}
+                <button 
+                  onClick={() => insertStepAt(a.id, { id: Date.now(), name: `New Activity`, activityType: "manual", mode: "adw", driver: "amount", threshold: "0", folder: "" })} 
+                  className="w-8 h-8 rounded-full bg-emerald-500 text-white text-lg flex items-center justify-center hover:bg-emerald-600"
+                  title="Insert activity after this one"
+                >+</button>
+                <button 
+                  onClick={() => setForm(c => ({ ...c, approvals: c.approvals.filter(x => x.id !== a.id) }))} 
+                  className="w-8 h-8 rounded-full bg-red-100 text-red-500 text-lg flex items-center justify-center hover:bg-red-200"
+                  title="Delete this activity"
+                >×</button>
+              </div>
+              
+              {/* Help text for this activity */}
+              {a.helpText && (
+                <div className="mb-3 rounded-lg bg-sky-50 border border-sky-200 p-2 text-xs text-sky-800">
+                  💡 {a.helpText}
+                </div>
+              )}
+              
+              <div className="grid gap-4 md:grid-cols-3 mb-4">
+                <label className="text-sm">
+                  <div className="mb-1 font-medium text-slate-700 flex items-center">Activity Type <HelpIcon helpKey="activityType" /></div>
+                  <select value={a.activityType || "manual"} onChange={e => updateApproval(a.id, { activityType: e.target.value })} className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none bg-white">
+                    <option value="manual">👤 Manual (Human Approval)</option>
+                    <option value="automated">🤖 Automated (Robot)</option>
+                    <option value="notification">📧 Notification</option>
+                  </select>
+                </label>
+                <label className="text-sm">
+                  <div className="mb-1 font-medium text-slate-700 flex items-center">Folder Selection Rule <HelpIcon helpKey="routingMode" /></div>
+                  <select value={a.mode} onChange={e => updateApproval(a.id, { mode: e.target.value })} className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none bg-white">
+                    <option value="static">ExplicitFolder (Static)</option>
+                    <option value="dynamic">Department (Dynamic)</option>
+                    <option value="adw">MultiElementDynamic (ADW)</option>
+                    <option value="customField">CustomFieldValue</option>
+                  </select>
+                </label>
+                <label className="text-sm">
+                  <div className="mb-1 font-medium text-slate-700 flex items-center">Routing Driver <HelpIcon helpKey="driver" /></div>
+                  <select value={a.driver} onChange={e => updateApproval(a.id, { driver: e.target.value })} className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none bg-white">
+                    <option value="department">Department</option>
+                    <option value="commodity">Commodity Code</option>
+                    <option value="amount">Amount / Threshold</option>
+                    <option value="glAccount">GL Account Code</option>
+                    <option value="product">Product (EHS/Hazmat)</option>
+                    <option value="ruleGroup">ADW Rule Group</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-4 mb-4">
+                <label className="text-sm">
+                  <div className="mb-1 font-medium text-slate-700 flex items-center">
+                    {a.mode === "adw" ? "Rule Group Name" : a.mode === "dynamic" ? "Department Field" : "Folder Name"}
+                    <HelpIcon helpKey={a.mode === "adw" ? "ruleGroup" : "folder"} />
+                  </div>
+                  <input 
+                    value={a.mode === "adw" ? (a.ruleGroup || a.name) : a.folder} 
+                    onChange={e => a.mode === "adw" ? updateApproval(a.id, { ruleGroup: e.target.value }) : updateApproval(a.id, { folder: e.target.value })} 
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none bg-white" 
+                    placeholder={a.mode === "adw" ? "e.g., Approval 1" : a.mode === "dynamic" ? "Uses department folders" : "e.g., Create PO, EHS Check"} 
+                    disabled={a.mode === "dynamic"}
+                  />
+                </label>
+                <label className="text-sm">
+                  <div className="mb-1 font-medium text-slate-700 flex items-center">Amount Threshold ($) <HelpIcon helpKey="threshold" /></div>
+                  <input 
+                    value={a.threshold} 
+                    onChange={e => updateApproval(a.id, { threshold: e.target.value, manualRuleOverride: false })} 
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none bg-white" 
+                    placeholder="0" 
+                  />
+                </label>
+                <label className="text-sm">
+                  <div className="mb-1 font-medium text-slate-700">Custom Field Name</div>
+                  <input value={a.customFieldName || ""} onChange={e => updateApproval(a.id, { customFieldName: e.target.value })} className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none bg-white" placeholder="e.g., acctElement2" disabled={a.mode !== "customField"} />
+                </label>
+                <label className="text-sm">
+                  <div className="mb-1 font-medium text-slate-700">Rule Logic</div>
+                  <select 
+                    value={a.ruleLogic || "in"} 
+                    onChange={e => updateApproval(a.id, { ruleLogic: e.target.value, manualRuleOverride: false })} 
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none bg-white"
+                  >
+                    <option value="in">IN (any match)</option>
+                    <option value="or">OR (explicit)</option>
+                    <option value="and">AND (all must match)</option>
+                  </select>
+                </label>
+              </div>
+
+              {/* Multi-value input for driver-based rules */}
+              {["department", "commodity", "glAccount"].includes(a.driver) && a.mode !== "adw" && a.mode !== "dynamic" && (
+                <div className="mb-4 rounded-xl border-2 border-dashed border-indigo-300 bg-indigo-50 p-3">
+                  <label className="text-sm">
+                    <div className="mb-1 font-medium text-indigo-800">
+                      {a.driver === "department" ? "Department Codes" : a.driver === "commodity" ? "Commodity Codes" : "GL Account Codes"}
+                      <span className="ml-2 text-xs font-normal text-indigo-600">(comma-separated for multiple values)</span>
+                    </div>
+                    <input 
+                      value={a.ruleValues || ""} 
+                      onChange={e => updateApproval(a.id, { ruleValues: e.target.value, manualRuleOverride: false })} 
+                      className="w-full rounded-xl border border-indigo-300 px-3 py-2 outline-none bg-white" 
+                      placeholder={a.driver === "department" ? "e.g., 203, 204, 205, 301" : a.driver === "commodity" ? "e.g., IT Equipment, Office Supplies" : "e.g., 1505, 1510, 2001"}
+                    />
+                  </label>
+                  <div className="mt-2 text-xs text-indigo-700">
+                    <strong>Preview:</strong> {(() => {
+                      const vals = (a.ruleValues || "").split(",").map(v => v.trim()).filter(v => v);
+                      if (vals.length === 0) return "Enter values above";
+                      if (vals.length === 1) return `${a.driver} equals "${vals[0]}"`;
+                      const logic = a.ruleLogic || "in";
+                      if (logic === "in") return `${a.driver} IN [${vals.join(", ")}]`;
+                      if (logic === "or") return vals.map(v => `${a.driver}="${v}"`).join(" OR ");
+                      return vals.map(v => `${a.driver}="${v}"`).join(" AND ");
+                    })()}
+                    {Number(a.threshold) > 0 && ` AND amount >= $${Number(a.threshold).toLocaleString()}`}
+                  </div>
+                </div>
+              )}
+
+              {/* Approver Configuration Section */}
+              <div className={`mb-4 rounded-xl border-2 p-3 ${a.mode === "static" ? "border-green-300 bg-green-50" : a.mode === "dynamic" ? "border-blue-300 bg-blue-50" : a.mode === "adw" ? "border-amber-300 bg-amber-50" : "border-slate-300 bg-slate-50"}`}>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-xs ${a.mode === "static" ? "bg-green-600" : a.mode === "dynamic" ? "bg-blue-600" : a.mode === "adw" ? "bg-amber-600" : "bg-slate-600"}`}>
+                    {a.mode === "static" ? "📁" : a.mode === "dynamic" ? "👥" : a.mode === "adw" ? "⚙️" : "🏷️"}
+                  </span>
+                  <div className="font-medium text-sm">
+                    {a.mode === "static" ? "Static Folder Approvers" : a.mode === "dynamic" ? "Department Approvers" : a.mode === "adw" ? "ADW Rule Group Approvers" : "Custom Field Approvers"}
+                  </div>
+                </div>
+
+                {/* Static Mode - Shared Folder */}
+                {a.mode === "static" && (
+                  <div className="space-y-3">
+                    <label className="text-sm block">
+                      <div className="mb-1 font-medium text-green-800">Shared Folder Name</div>
+                      <input 
+                        value={a.folder || ""} 
+                        onChange={e => updateApproval(a.id, { folder: e.target.value })} 
+                        className="w-full rounded-xl border border-green-300 px-3 py-2 outline-none bg-white" 
+                        placeholder="e.g., Finance Approval, EHS Check, Legal Review"
+                      />
+                    </label>
+                    <label className="text-sm block">
+                      <div className="mb-1 font-medium text-green-800">
+                        Approvers in Folder
+                        <span className="ml-2 text-xs font-normal text-green-600">(comma-separated usernames or emails)</span>
+                      </div>
+                      <input 
+                        value={a.approvers || ""} 
+                        onChange={e => updateApproval(a.id, { approvers: e.target.value })} 
+                        className="w-full rounded-xl border border-green-300 px-3 py-2 outline-none bg-white" 
+                        placeholder="e.g., john.smith@company.com, jane.doe@company.com, finance_manager"
+                      />
+                    </label>
+                    <div className="text-xs text-green-700 bg-green-100 rounded-lg p-2">
+                      <strong>📁 Static Routing:</strong> Documents will be routed to the shared folder "{a.folder || "[Folder Name]"}". 
+                      {a.approvers ? ` Approvers: ${a.approvers.split(",").length} user(s) configured.` : " Add approvers above."}
+                    </div>
+                  </div>
+                )}
+
+                {/* Dynamic Mode - Department Approvers */}
+                {a.mode === "dynamic" && (
+                  <div className="space-y-3">
+                    <div className="text-xs text-blue-700 bg-blue-100 rounded-lg p-2 mb-2">
+                      <strong>👥 Department Routing:</strong> Documents will be routed to department-specific folders based on the document's department field.
+                    </div>
+                    <label className="text-sm block">
+                      <div className="mb-1 font-medium text-blue-800">
+                        Department Approvers Configuration
+                        <span className="ml-2 text-xs font-normal text-blue-600">(one per line: DeptCode = Approver1, Approver2)</span>
+                      </div>
+                      <textarea 
+                        value={a.departmentApprovers || ""} 
+                        onChange={e => updateApproval(a.id, { departmentApprovers: e.target.value })} 
+                        className="w-full rounded-xl border border-blue-300 px-3 py-2 outline-none bg-white font-mono text-xs" 
+                        rows={4}
+                        placeholder={"203 = john.smith@company.com, dept203_manager\n204 = jane.doe@company.com\n205 = finance_team@company.com\n301 = operations_lead@company.com"}
+                      />
+                    </label>
+                    <div className="text-xs text-blue-700">
+                      {(() => {
+                        const lines = (a.departmentApprovers || "").split("\n").filter(l => l.includes("="));
+                        return lines.length > 0 ? `✓ ${lines.length} department(s) configured` : "Enter department approvers above";
+                      })()}
+                    </div>
+                  </div>
+                )}
+
+                {/* ADW Mode - Rule Group Approvers with Multi-Condition Support */}
+                {a.mode === "adw" && (
+                  <div className="space-y-3">
+                    <div className="text-xs text-amber-700 bg-amber-100 rounded-lg p-2 mb-2">
+                      <strong>⚙️ ADW Routing:</strong> Documents will be routed based on ADW Rule Group "{a.ruleGroup || a.name}". 
+                      Add multiple rules combining Department, Amount, Commodity, and other conditions.
+                    </div>
+                    
+                    {/* Quick Add Templates */}
+                    <div className="mb-3">
+                      <div className="text-xs font-medium text-amber-700 mb-2">⚡ Quick Add Common Rules:</div>
+                      <div className="flex flex-wrap gap-2">
+                        <button 
+                          onClick={() => {
+                            const newRules = [...(a.adwRules || []), 
+                              { id: Date.now(), department: "", minAmount: "0", maxAmount: "5000", commodity: "", glAccount: "", approvers: "" },
+                              { id: Date.now() + 1, department: "", minAmount: "5000", maxAmount: "25000", commodity: "", glAccount: "", approvers: "" },
+                              { id: Date.now() + 2, department: "", minAmount: "25000", maxAmount: "", commodity: "", glAccount: "", approvers: "" }
+                            ];
+                            updateApproval(a.id, { adwRules: newRules });
+                          }}
+                          className="px-2 py-1 bg-amber-100 text-amber-700 rounded text-[10px] hover:bg-amber-200"
+                        >💰 Amount Tiers ($0-5K, $5K-25K, $25K+)</button>
+                        <button 
+                          onClick={() => {
+                            const newRules = [...(a.adwRules || []), 
+                              { id: Date.now(), department: "Operations", minAmount: "", maxAmount: "", commodity: "", glAccount: "", approvers: "" },
+                              { id: Date.now() + 1, department: "Finance", minAmount: "", maxAmount: "", commodity: "", glAccount: "", approvers: "" },
+                              { id: Date.now() + 2, department: "IT", minAmount: "", maxAmount: "", commodity: "", glAccount: "", approvers: "" }
+                            ];
+                            updateApproval(a.id, { adwRules: newRules });
+                          }}
+                          className="px-2 py-1 bg-amber-100 text-amber-700 rounded text-[10px] hover:bg-amber-200"
+                        >🏢 By Department</button>
+                        <button 
+                          onClick={() => {
+                            const newRules = [...(a.adwRules || []), 
+                              { id: Date.now(), department: "Operations", minAmount: "0", maxAmount: "10000", commodity: "", glAccount: "", approvers: "" },
+                              { id: Date.now() + 1, department: "Operations", minAmount: "10000", maxAmount: "", commodity: "", glAccount: "", approvers: "" },
+                              { id: Date.now() + 2, department: "Finance", minAmount: "0", maxAmount: "10000", commodity: "", glAccount: "", approvers: "" },
+                              { id: Date.now() + 3, department: "Finance", minAmount: "10000", maxAmount: "", commodity: "", glAccount: "", approvers: "" }
+                            ];
+                            updateApproval(a.id, { adwRules: newRules });
+                          }}
+                          className="px-2 py-1 bg-amber-100 text-amber-700 rounded text-[10px] hover:bg-amber-200"
+                        >🔀 Dept + Amount Matrix</button>
+                        <button 
+                          onClick={() => {
+                            const newRules = [...(a.adwRules || []), 
+                              { id: Date.now(), department: "", minAmount: "", maxAmount: "", commodity: "IT Equipment", glAccount: "", approvers: "" },
+                              { id: Date.now() + 1, department: "", minAmount: "", maxAmount: "", commodity: "Office Supplies", glAccount: "", approvers: "" },
+                              { id: Date.now() + 2, department: "", minAmount: "", maxAmount: "", commodity: "Services", glAccount: "", approvers: "" }
+                            ];
+                            updateApproval(a.id, { adwRules: newRules });
+                          }}
+                          className="px-2 py-1 bg-amber-100 text-amber-700 rounded text-[10px] hover:bg-amber-200"
+                        >📦 By Commodity</button>
+                      </div>
+                    </div>
+                    
+                    {/* ADW Rules Builder */}
+                    <div className="border border-amber-300 rounded-xl bg-white p-3">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="font-medium text-amber-800 text-sm">📋 ADW Approval Rules</div>
+                        <div className="flex gap-2">
+                          {(a.adwRules || []).length > 0 && (
+                            <button 
+                              onClick={() => updateApproval(a.id, { adwRules: [] })}
+                              className="px-2 py-1 bg-red-100 text-red-600 rounded-lg text-xs hover:bg-red-200"
+                            >Clear All</button>
+                          )}
+                          <button 
+                            onClick={() => {
+                              const newRules = [...(a.adwRules || []), { id: Date.now(), department: "", minAmount: "", maxAmount: "", commodity: "", glAccount: "", companyCode: "", approvers: "" }];
+                              updateApproval(a.id, { adwRules: newRules });
+                            }}
+                            className="px-3 py-1 bg-amber-500 text-white rounded-lg text-xs font-medium hover:bg-amber-600"
+                          >+ Add Rule</button>
+                        </div>
+                      </div>
+                      
+                      {(!a.adwRules || a.adwRules.length === 0) && (
+                        <div className="text-center py-4 text-amber-600 text-sm">
+                          No rules configured. Click "+ Add Rule" to create approval rules.
+                        </div>
+                      )}
+                      
+                      <div className="space-y-3">
+                        {(a.adwRules || []).map((rule, ruleIdx) => (
+                          <div key={rule.id} className="rounded-lg border-2 border-dashed border-amber-200 bg-amber-50/50 p-3">
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-xs font-bold text-amber-700">Rule #{ruleIdx + 1}</span>
+                              <button 
+                                onClick={() => {
+                                  const newRules = a.adwRules.filter(r => r.id !== rule.id);
+                                  updateApproval(a.id, { adwRules: newRules });
+                                }}
+                                className="text-red-500 hover:text-red-700 text-xs"
+                              >✕ Remove</button>
+                            </div>
+                            
+                            <div className="grid gap-2 md:grid-cols-3 mb-2">
+                              <label className="text-xs">
+                                <div className="mb-0.5 text-amber-700 font-medium">Department(s)</div>
+                                <input 
+                                  value={rule.department || ""} 
+                                  onChange={e => {
+                                    const newRules = a.adwRules.map(r => r.id === rule.id ? { ...r, department: e.target.value } : r);
+                                    updateApproval(a.id, { adwRules: newRules });
+                                  }}
+                                  className="w-full rounded-lg border border-amber-200 px-2 py-1.5 outline-none text-xs" 
+                                  placeholder="e.g., 203, 204, 205"
+                                />
+                              </label>
+                              <label className="text-xs">
+                                <div className="mb-0.5 text-amber-700 font-medium">Min Amount ($)</div>
+                                <input 
+                                  type="number"
+                                  value={rule.minAmount || ""} 
+                                  onChange={e => {
+                                    const newRules = a.adwRules.map(r => r.id === rule.id ? { ...r, minAmount: e.target.value } : r);
+                                    updateApproval(a.id, { adwRules: newRules });
+                                  }}
+                                  className="w-full rounded-lg border border-amber-200 px-2 py-1.5 outline-none text-xs" 
+                                  placeholder="0"
+                                />
+                              </label>
+                              <label className="text-xs">
+                                <div className="mb-0.5 text-amber-700 font-medium">Max Amount ($)</div>
+                                <input 
+                                  type="number"
+                                  value={rule.maxAmount || ""} 
+                                  onChange={e => {
+                                    const newRules = a.adwRules.map(r => r.id === rule.id ? { ...r, maxAmount: e.target.value } : r);
+                                    updateApproval(a.id, { adwRules: newRules });
+                                  }}
+                                  className="w-full rounded-lg border border-amber-200 px-2 py-1.5 outline-none text-xs" 
+                                  placeholder="No limit"
+                                />
+                              </label>
+                            </div>
+                            
+                            <div className="grid gap-2 md:grid-cols-3 mb-2">
+                              <label className="text-xs">
+                                <div className="mb-0.5 text-amber-700 font-medium">Commodity Code(s)</div>
+                                <input 
+                                  value={rule.commodity || ""} 
+                                  onChange={e => {
+                                    const newRules = a.adwRules.map(r => r.id === rule.id ? { ...r, commodity: e.target.value } : r);
+                                    updateApproval(a.id, { adwRules: newRules });
+                                  }}
+                                  className="w-full rounded-lg border border-amber-200 px-2 py-1.5 outline-none text-xs" 
+                                  placeholder="e.g., IT, MRO"
+                                />
+                              </label>
+                              <label className="text-xs">
+                                <div className="mb-0.5 text-amber-700 font-medium">GL Account(s)</div>
+                                <input 
+                                  value={rule.glAccount || ""} 
+                                  onChange={e => {
+                                    const newRules = a.adwRules.map(r => r.id === rule.id ? { ...r, glAccount: e.target.value } : r);
+                                    updateApproval(a.id, { adwRules: newRules });
+                                  }}
+                                  className="w-full rounded-lg border border-amber-200 px-2 py-1.5 outline-none text-xs" 
+                                  placeholder="e.g., 1505, 1510"
+                                />
+                              </label>
+                              <label className="text-xs">
+                                <div className="mb-0.5 text-amber-700 font-medium">Company Code(s)</div>
+                                <input 
+                                  value={rule.companyCode || ""} 
+                                  onChange={e => {
+                                    const newRules = a.adwRules.map(r => r.id === rule.id ? { ...r, companyCode: e.target.value } : r);
+                                    updateApproval(a.id, { adwRules: newRules });
+                                  }}
+                                  className="w-full rounded-lg border border-amber-200 px-2 py-1.5 outline-none text-xs" 
+                                  placeholder="e.g., 1000, 2000"
+                                />
+                              </label>
+                            </div>
+                            
+                            <label className="text-xs block">
+                              <div className="mb-0.5 text-amber-700 font-medium">👤 Approver(s) for this rule</div>
+                              <input 
+                                value={rule.approvers || ""} 
+                                onChange={e => {
+                                  const newRules = a.adwRules.map(r => r.id === rule.id ? { ...r, approvers: e.target.value } : r);
+                                  updateApproval(a.id, { adwRules: newRules });
+                                }}
+                                className="w-full rounded-lg border border-amber-200 px-2 py-1.5 outline-none text-xs" 
+                                placeholder="e.g., john.smith@company.com, jane.doe@company.com"
+                              />
+                            </label>
+                            
+                            {/* Rule Preview */}
+                            <div className="mt-2 text-[10px] text-amber-800 bg-amber-100 rounded p-1.5">
+                              <strong>Rule:</strong> {(() => {
+                                const conditions = [];
+                                if (rule.department) conditions.push(`Dept IN [${rule.department}]`);
+                                if (rule.minAmount && rule.maxAmount) conditions.push(`Amount ${rule.minAmount}-${rule.maxAmount}`);
+                                else if (rule.minAmount) conditions.push(`Amount >= $${Number(rule.minAmount).toLocaleString()}`);
+                                else if (rule.maxAmount) conditions.push(`Amount <= $${Number(rule.maxAmount).toLocaleString()}`);
+                                if (rule.commodity) conditions.push(`Commodity IN [${rule.commodity}]`);
+                                if (rule.glAccount) conditions.push(`GL IN [${rule.glAccount}]`);
+                                if (rule.companyCode) conditions.push(`Company IN [${rule.companyCode}]`);
+                                return conditions.length > 0 ? conditions.join(" AND ") : "No conditions (matches all)";
+                              })()} → {rule.approvers || "[No approvers set]"}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    {/* Legacy text input for backward compatibility */}
+                    <details className="text-xs">
+                      <summary className="cursor-pointer text-amber-600 hover:text-amber-800">Advanced: Text-based rule input</summary>
+                      <div className="mt-2">
+                        <textarea 
+                          value={a.adwApprovers || ""} 
+                          onChange={e => updateApproval(a.id, { adwApprovers: e.target.value })} 
+                          className="w-full rounded-xl border border-amber-300 px-3 py-2 outline-none bg-white font-mono text-xs" 
+                          rows={3}
+                          placeholder={"Dept=203, Amount>=5000 = approver1@company.com\nDept=204, Amount>=10000 = approver2@company.com"}
+                        />
+                      </div>
+                    </details>
+                    
+                    <label className="text-sm block">
+                      <div className="mb-1 font-medium text-amber-800">Default Approvers (fallback when no rules match)</div>
+                      <input 
+                        value={a.defaultApprovers || ""} 
+                        onChange={e => updateApproval(a.id, { defaultApprovers: e.target.value })} 
+                        className="w-full rounded-xl border border-amber-300 px-3 py-2 outline-none bg-white" 
+                        placeholder="e.g., fallback_approver@company.com"
+                      />
+                    </label>
+                    
+                    <div className="text-xs text-amber-700 bg-amber-100 rounded-lg p-2">
+                      {(() => {
+                        const ruleCount = (a.adwRules || []).length;
+                        const textRules = (a.adwApprovers || "").split("\n").filter(l => l.includes("=")).length;
+                        const total = ruleCount + textRules;
+                        return total > 0 ? `✓ ${total} approval rule(s) configured` : "Add rules above to define approval routing";
+                      })()}
+                    </div>
+                  </div>
+                )}
+
+                {/* Custom Field Mode */}
+                {a.mode === "customField" && (
+                  <div className="space-y-3">
+                    <div className="text-xs text-purple-700 bg-purple-100 rounded-lg p-2 mb-2">
+                      <strong>🏷️ Custom Field Routing:</strong> Documents will be routed based on the value of custom field "{a.customFieldName || "[Field Name]"}".
+                    </div>
+                    <label className="text-sm block">
+                      <div className="mb-1 font-medium text-purple-800">
+                        Custom Field Value Approvers
+                        <span className="ml-2 text-xs font-normal text-purple-600">(one per line: FieldValue = Approver1, Approver2)</span>
+                      </div>
+                      <textarea 
+                        value={a.customFieldApprovers || ""} 
+                        onChange={e => updateApproval(a.id, { customFieldApprovers: e.target.value })} 
+                        className="w-full rounded-xl border border-purple-300 px-3 py-2 outline-none bg-white font-mono text-xs" 
+                        rows={4}
+                        placeholder={"1505 = gl_approver_1505@company.com\n1510 = gl_approver_1510@company.com\n2001 = capex_team@company.com"}
+                      />
+                    </label>
+                    <div className="text-xs text-purple-700">
+                      {(() => {
+                        const lines = (a.customFieldApprovers || "").split("\n").filter(l => l.includes("="));
+                        return lines.length > 0 ? `✓ ${lines.length} field value(s) configured` : "Enter custom field approvers above";
+                      })()}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="text-sm font-medium text-slate-700">Rule Expression (CDATA)</div>
+                  <div className="flex items-center gap-2">
+                    <label className="inline-flex items-center gap-1 text-xs text-slate-500">
+                      <input 
+                        type="checkbox" 
+                        checked={a.manualRuleOverride || false} 
+                        onChange={e => updateApproval(a.id, { manualRuleOverride: e.target.checked })} 
+                      />
+                      Manual Override
+                    </label>
+                    <button 
+                      onClick={() => updateApproval(a.id, { templateRule: buildRuleFromForm(form, a), manualRuleOverride: false })}
+                      className="text-xs text-indigo-600 hover:text-indigo-800 underline"
+                    >
+                      🔄 Regenerate
+                    </button>
+                  </div>
+                </div>
+                <textarea 
+                  value={a.manualRuleOverride ? (a.templateRule || "") : buildRuleFromForm(form, a)} 
+                  onChange={e => updateApproval(a.id, { templateRule: e.target.value, manualRuleOverride: true })} 
+                  className={`w-full rounded-xl border px-3 py-2 outline-none font-mono text-xs ${a.manualRuleOverride ? "border-amber-400 bg-amber-50" : "border-slate-300 bg-slate-100"}`}
+                  rows={2}
+                  placeholder='e.g., Document.RequiresRuleGroupEvaluation("Approval 1") == true'
+                  readOnly={!a.manualRuleOverride}
+                />
+                {!a.manualRuleOverride && (
+                  <div className="mt-1 text-xs text-slate-500">
+                    ℹ️ Rule auto-generated from settings above. Check "Manual Override" to edit directly.
+                  </div>
+                )}
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="text-sm">
+                  <div className="mb-1 font-medium text-slate-700">Help Text (wfActivityHelp)</div>
+                  <input value={a.helpText || ""} onChange={e => updateApproval(a.id, { helpText: e.target.value })} className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none bg-white text-xs" placeholder="Help text shown to users" />
+                </label>
+                <label className="text-sm">
+                  <div className="mb-1 font-medium text-slate-700">Support Note (wfActivitySupportNote)</div>
+                  <input value={a.supportNote || ""} onChange={e => updateApproval(a.id, { supportNote: e.target.value })} className="w-full rounded-xl border border-slate-300 px-3 py-2 outline-none bg-white text-xs" placeholder="Internal documentation note" />
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 border-t border-slate-200 pt-4">
+          <div className="text-sm font-medium text-slate-700 mb-2">Add New Activity:</div>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setForm(c => ({ ...c, approvals: [...c.approvals, { id: Date.now(), name: `Approval ${c.approvals.length + 1}`, activityType: "manual", mode: "adw", driver: "ruleGroup", threshold: "0", folder: "" }] }))} className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white">+ ADW Activity</button>
+            <button onClick={() => setForm(c => ({ ...c, approvals: [...c.approvals, { id: Date.now(), name: `Department Approval`, activityType: "manual", mode: "dynamic", driver: "department", threshold: "0", folder: "" }] }))} className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white">+ Department Activity</button>
+            <button onClick={() => setForm(c => ({ ...c, approvals: [...c.approvals, { id: Date.now(), name: `Static Check`, activityType: "manual", mode: "static", driver: "product", threshold: "0", folder: "EHS Check" }] }))} className="rounded-xl bg-green-600 px-4 py-2 text-sm font-medium text-white">+ Static Activity</button>
+            <button onClick={() => setForm(c => ({ ...c, approvals: [...c.approvals, { id: Date.now(), name: `Create PO`, activityType: "automated", mode: "static", driver: "amount", threshold: "0", folder: "Create PO" }] }))} className="rounded-xl bg-orange-600 px-4 py-2 text-sm font-medium text-white">+ Automated Activity</button>
+          </div>
+          <div className="flex flex-wrap gap-2 mt-2">
+            <button onClick={() => setForm(c => ({ ...c, approvals: [{ id: Date.now(), name: `First Activity`, activityType: "manual", mode: "adw", driver: "ruleGroup", threshold: "0", folder: "" }, ...c.approvals] }))} className="rounded-xl border-2 border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-700">+ Add at Beginning</button>
+            <button onClick={regenerateXml} className="rounded-xl border-2 border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800">🔄 Generate XML</button>
+          </div>
+          <div className="mt-3 text-xs text-slate-500 bg-slate-100 rounded-lg p-2">
+            💡 <strong>Tip:</strong> Use the <span className="text-emerald-600 font-bold">+</span> button on any activity to insert a new one right after it. Use <span className="font-bold">▲▼</span> arrows to reorder.
+          </div>
+        </div>
+      </Section>
+
+      {/* Section 4: Relationships Builder */}
+      <Section title="4. Activity Relationships" subtitle="The flow sequence is automatically generated based on the order of activities above." borderColor="border-purple-400">
+        <div className="bg-purple-50 rounded-xl p-4">
+          <div className="text-sm text-purple-800 font-mono">
+            START → {form.approvals.map(a => slugify(a.name)).join(" → ")} → END
+          </div>
+        </div>
+        <div className="mt-3 text-xs text-slate-500">
+          ℹ️ The flow sequence updates automatically when you reorder activities using the ▲▼ arrows above.
+        </div>
+      </Section>
+
+      {/* XML Section - full width below */}
+      <Section title="Generated XML" subtitle="Review, validate, and export the Jaggaer-compliant workflow XML.">
+          <textarea value={xmlDraft} onChange={e => setXmlDraft(e.target.value)} rows={16} className="w-full rounded-2xl border border-slate-200 bg-slate-950 px-3 py-3 font-mono text-xs leading-6 text-emerald-300 outline-none" />
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button onClick={regenerateXml} className="rounded-2xl bg-sky-600 px-4 py-2 text-sm font-medium text-white">🔄 Regenerate XML</button>
+            <button onClick={() => download(`${form.workflowType}-workflow.xml`, xmlDraft)} className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">📥 Export XML</button>
+          </div>
+          <div className="mt-4">
+            {validationIssues.length === 0 ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+                ✓ <strong>Valid XML</strong> - Ready to import into Jaggaer
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-amber-800">⚠ Validation Issues:</div>
+                {validationIssues.map(i => <div key={i} className="rounded-xl border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900">• {i}</div>)}
+              </div>
+            )}
+          </div>
+      </Section>
+    </div>
+  );
+};
+
+// ============ TEMPLATE MODE ============
+const TemplateMode = ({ form, setForm, templateXml, setTemplateXml }) => {
+  const [workbookName, setWorkbookName] = useState("");
+  const [sheets, setSheets] = useState({});
+  const [sheetNames, setSheetNames] = useState([]);
+  const [selectedSheet, setSelectedSheet] = useState("");
+  const [sheetRows, setSheetRows] = useState([]);
+  const [selectedTemplateType, setSelectedTemplateType] = useState("po");
+  const headers = useMemo(() => sheetRows.length ? Object.keys(sheetRows[0]) : [], [sheetRows]);
+  const [mapping, setMapping] = useState({ 
+    mainCategory: "", commodityCode: "", commodityName: "", companyCode: "", 
+    condition: "", totalAmount: "", approvalName: "", approvalUserId: "", itemType: "" 
+  });
+  const validationIssues = useMemo(() => validateXml(templateXml), [templateXml]);
+  
+  // Get current template config
+  const currentTemplate = TEMPLATE_HEADERS[selectedTemplateType] || TEMPLATE_HEADERS.po;
+
+  // Auto-map columns when headers match template
+  const autoMapColumns = (detectedHeaders) => {
+    const newMapping = {};
+    const templateHeaders = currentTemplate.headers;
+    templateHeaders.forEach(th => {
+      const matchingHeader = detectedHeaders.find(h => 
+        h.toLowerCase().replace(/\s+/g, '') === th.toLowerCase().replace(/\s+/g, '') ||
+        h.toLowerCase().includes(th.toLowerCase().split(' ')[0])
+      );
+      if (matchingHeader) {
+        const key = th.replace(/\s+/g, '');
+        newMapping[key] = matchingHeader;
+      }
+    });
+    setMapping(prev => ({ ...prev, ...newMapping }));
+  };
+
+  const uploadWorkbook = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const buffer = await file.arrayBuffer();
+    const wb = XLSX.read(buffer, { type: "array" });
+    const nextSheets = {};
+    wb.SheetNames.forEach(name => { nextSheets[name] = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: "" }); });
+    setWorkbookName(file.name);
+    setSheets(nextSheets);
+    setSheetNames(wb.SheetNames);
+    if (wb.SheetNames[0]) {
+      setSelectedSheet(wb.SheetNames[0]);
+      const rows = nextSheets[wb.SheetNames[0]] || [];
+      setSheetRows(rows);
+      if (rows.length > 0) {
+        autoMapColumns(Object.keys(rows[0]));
+      }
+    }
+  };
+
+  const buildFromSpreadsheet = () => {
+    if (!sheetRows.length) return;
+    
+    // Group rows by Approval Name to create unique steps
+    const approvalGroups = {};
+    sheetRows.forEach((row, i) => {
+      // Try multiple column name variations
+      const approvalName = row[mapping.ApprovalName] || row["Approval Name"] || row["ApprovalName"] || row["Step Name"] || row["StepName"] || "";
+      if (!approvalName) return; // Skip rows without approval name
+      
+      if (!approvalGroups[approvalName]) {
+        approvalGroups[approvalName] = {
+          rows: [],
+          approvalUserIds: new Set(),
+          totalAmounts: [],
+          conditions: new Set(),
+          commodityCodes: new Set(),
+          commodityNames: new Set(),
+          companyCodes: new Set(),
+          mainCategories: new Set(),
+          itemTypes: new Set(),
+        };
+      }
+      approvalGroups[approvalName].rows.push(row);
+      
+      // Collect approval user IDs
+      const userId = row[mapping.ApprovalUserId] || row["ApprovalUserId"] || row["Approver"] || "";
+      if (userId) approvalGroups[approvalName].approvalUserIds.add(userId);
+      
+      // Collect amounts
+      const amount = row[mapping.TotalAmount] || row["Total Amount"] || row["TotalAmount"] || row["Amount"] || "";
+      if (amount) approvalGroups[approvalName].totalAmounts.push(amount);
+      
+      // Collect conditions
+      const condition = row[mapping.Condition] || row["Condition"] || "";
+      if (condition) approvalGroups[approvalName].conditions.add(condition);
+      
+      // Collect commodity codes
+      const commodityCode = row[mapping.CommodityCode] || row["Commodity Code"] || row["CommodityCode"] || "";
+      if (commodityCode) approvalGroups[approvalName].commodityCodes.add(commodityCode);
+      
+      // Collect commodity names
+      const commodityName = row[mapping.CommodityName] || row["Commodity Name"] || row["CommodityName"] || "";
+      if (commodityName) approvalGroups[approvalName].commodityNames.add(commodityName);
+      
+      // Collect company codes
+      const companyCode = row[mapping.CompanyCode] || row["Company Code"] || row["CompanyCode"] || "";
+      if (companyCode) approvalGroups[approvalName].companyCodes.add(companyCode);
+      
+      // Collect main categories
+      const mainCategory = row[mapping.MainCategory] || row["Main Category"] || row["MainCategory"] || row["Category"] || "";
+      if (mainCategory) approvalGroups[approvalName].mainCategories.add(mainCategory);
+      
+      // Collect item types
+      const itemType = row[mapping.ItemType] || row["Item Type"] || row["ItemType"] || "";
+      if (itemType) approvalGroups[approvalName].itemTypes.add(itemType);
+    });
+    
+    // Convert groups to approval steps
+    const approvals = Object.entries(approvalGroups).map(([name, data], i) => {
+      // Get threshold - use minimum amount or first amount
+      const amounts = data.totalAmounts.map(a => parseFloat(String(a).replace(/[^0-9.]/g, '')) || 0);
+      const threshold = amounts.length > 0 ? String(Math.min(...amounts)) : "0";
+      
+      // Get approvers as comma-separated list
+      const approversList = Array.from(data.approvalUserIds).filter(a => a).join(", ");
+      
+      // Get commodity codes
+      const commodities = Array.from(data.commodityCodes).filter(c => c).join(", ");
+      const commodityNames = Array.from(data.commodityNames).filter(c => c).join(", ");
+      
+      // Get company codes
+      const companies = Array.from(data.companyCodes).filter(c => c).join(", ");
+      
+      // Get categories
+      const categories = Array.from(data.mainCategories).filter(c => c).join(", ");
+      
+      // Get conditions
+      const conditions = Array.from(data.conditions).filter(c => c);
+      const conditionStr = conditions.length > 0 ? conditions[0] : ">=";
+      
+      // Determine driver and mode based on what data is present
+      let driver = "amount";
+      let mode = "adw";
+      let ruleValues = "";
+      let folder = "";
+      
+      if (commodities) { 
+        driver = "commodity"; 
+        ruleValues = commodities; 
+      } else if (companies) { 
+        driver = "department"; 
+        ruleValues = companies; 
+      } else if (categories) {
+        driver = "commodity";
+        ruleValues = categories;
+      }
+      
+      // Build rule expression
+      let templateRule = "";
+      if (parseFloat(threshold) > 0) {
+        templateRule = `[TotalAmount() ${conditionStr} ${threshold}]`;
+      }
+      if (commodities) {
+        const commodityList = commodities.split(",").map(c => `"${c.trim()}"`).join(", ");
+        templateRule = templateRule ? `${templateRule} && [Commodity.Code in {${commodityList}}]` : `[Commodity.Code in {${commodityList}}]`;
+      }
+      if (companies) {
+        const companyList = companies.split(",").map(c => `"${c.trim()}"`).join(", ");
+        templateRule = templateRule ? `${templateRule} && [CompanyCode in {${companyList}}]` : `[CompanyCode in {${companyList}}]`;
+      }
+      
+      // Build ADW approvers string
+      const adwApproversLines = [];
+      if (parseFloat(threshold) > 0 && approversList) {
+        adwApproversLines.push(`Amount ${conditionStr} ${threshold} = ${approversList}`);
+      } else if (approversList) {
+        adwApproversLines.push(`Default = ${approversList}`);
+      }
+      
+      return { 
+        id: Date.now() + i, 
+        name: String(name).trim().slice(0, 90),
+        activityName: slugify(String(name).trim()),
+        activityType: "manual",
+        mode,
+        driver,
+        threshold,
+        folder,
+        ruleGroup: slugify(String(name).trim()) + "RuleGroup",
+        ruleValues,
+        ruleLogic: "in",
+        templateRule: templateRule || "true",
+        manualRuleOverride: !!templateRule,
+        approvers: approversList,
+        adwApprovers: adwApproversLines.join("\n"),
+        defaultApprovers: approversList,
+        helpText: `Imported from ${workbookName}. ${data.rows.length} rule(s). ${commodityNames ? `Commodities: ${commodityNames}` : ""}`,
+        supportNote: `Rows: ${data.rows.length}, Conditions: ${conditions.join(", ") || "none"}`,
+      };
+    }).filter(a => a.name && a.name.trim());
+    
+    if (approvals.length) {
+      // Build complete form with all required fields
+      const nextForm = { 
+        ...form, 
+        approvals, 
+        workflowType: selectedTemplateType === "po" ? "requisition" : selectedTemplateType,
+        module: form.module || "eProcurement",
+        vertical: form.vertical || "Manufacturing",
+        includeExpiration: form.includeExpiration !== false,
+        expiryMode: form.expiryMode || "department",
+        useInventoryRobot: form.useInventoryRobot || false,
+        sampleDepartment: form.sampleDepartment || "Operations",
+        sampleCommodity: form.sampleCommodity || "General",
+        sampleGl: form.sampleGl || "1000",
+        versionDescription: `Imported from ${workbookName} on ${new Date().toLocaleDateString()}`
+      };
+      setForm(nextForm);
+      setTemplateXml(buildXmlFromForm(nextForm));
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Dashboard at top - full width */}
+      <VisualWorkflowDashboard form={form} title="Template Workflow Dashboard" subtitle="Workflow generated from imported template" />
+
+      {/* Download Templates Section */}
+      <Section title="Download Blank Templates" subtitle="Export Excel templates for different workflow types to share with customers." borderColor="border-emerald-400">
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          {Object.entries(TEMPLATE_HEADERS).map(([key, tmpl]) => (
+            <button 
+              key={key}
+              onClick={() => exportExcelTemplate(key)}
+              className="rounded-xl border-2 border-emerald-200 bg-emerald-50 p-3 text-left hover:bg-emerald-100 hover:border-emerald-300 transition"
+            >
+              <div className="font-semibold text-emerald-900 text-sm">{tmpl.name}</div>
+              <div className="text-xs text-emerald-700 mt-1">{tmpl.headers.length} columns</div>
+              <div className="text-xs text-emerald-600 mt-0.5">📥 Download .xlsx</div>
+            </button>
+          ))}
+        </div>
+        <div className="mt-3 text-xs text-slate-500 bg-slate-100 rounded-lg p-2">
+          💡 <strong>Tip:</strong> Download a blank template, fill it with customer approval rules, then import it below to generate the workflow XML.
+        </div>
+      </Section>
+
+      {/* Import section below dashboard */}
+      <Section title="Import from Spreadsheet" subtitle="Upload a customer template Excel file to generate workflow XML." borderColor="border-sky-400">
+          <div className="grid gap-3 md:grid-cols-3">
+            <label className="text-sm">
+              <div className="mb-1 font-medium">Template Type</div>
+              <select value={selectedTemplateType} onChange={e => setSelectedTemplateType(e.target.value)} className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none">
+                {Object.entries(TEMPLATE_HEADERS).map(([key, tmpl]) => (
+                  <option key={key} value={key}>{tmpl.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              <div className="mb-1 font-medium">Upload Template (.xlsx)</div>
+              <input type="file" accept=".xlsx,.xls" onChange={uploadWorkbook} className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none" />
+            </label>
+            <div className="rounded-2xl bg-slate-50 p-3 text-sm">
+              <div className="font-medium">Loaded: {workbookName || "None"}</div>
+              <div className="text-slate-500">{sheetRows.length} rows</div>
+            </div>
+          </div>
+          
+          {/* Expected Headers Display */}
+          <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-3">
+            <div className="text-sm font-medium text-sky-900 mb-2">Expected Headers for {currentTemplate.name}:</div>
+            <div className="flex flex-wrap gap-1">
+              {currentTemplate.headers.map(h => (
+                <span key={h} className="px-2 py-1 rounded bg-sky-200 text-sky-800 text-xs font-medium">{h}</span>
+              ))}
+            </div>
+          </div>
+          
+          {sheetNames.length > 0 && (
+            <div className="mt-4">
+              <label className="text-sm">
+                <div className="mb-1 font-medium">Select Worksheet</div>
+                <select value={selectedSheet} onChange={e => { setSelectedSheet(e.target.value); setSheetRows(sheets[e.target.value] || []); }} className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none">
+                  {sheetNames.map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+            </div>
+          )}
+          
+          {/* Detected Headers */}
+          {headers.length > 0 && (
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+              <div className="text-sm font-medium text-amber-900 mb-2">Detected Headers in File:</div>
+              <div className="flex flex-wrap gap-1">
+                {headers.map(h => (
+                  <span key={h} className="px-2 py-1 rounded bg-amber-200 text-amber-800 text-xs font-medium">{h}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {headers.length > 0 && (
+            <div className="mt-4">
+              <div className="text-sm font-medium text-slate-700 mb-2">Map Columns (auto-detected where possible):</div>
+              <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-4">
+                <label className="text-sm"><div className="mb-1 font-medium text-sky-700">Approval Name *</div><select value={mapping.ApprovalName || ""} onChange={e => setMapping(c => ({ ...c, ApprovalName: e.target.value }))} className="w-full rounded-xl border border-sky-300 bg-white px-3 py-2 outline-none"><option value="">-- Select --</option>{headers.map(h => <option key={h} value={h}>{h}</option>)}</select></label>
+                <label className="text-sm"><div className="mb-1 font-medium text-sky-700">ApprovalUserId *</div><select value={mapping.ApprovalUserId || ""} onChange={e => setMapping(c => ({ ...c, ApprovalUserId: e.target.value }))} className="w-full rounded-xl border border-sky-300 bg-white px-3 py-2 outline-none"><option value="">-- Select --</option>{headers.map(h => <option key={h} value={h}>{h}</option>)}</select></label>
+                <label className="text-sm"><div className="mb-1 font-medium">Total Amount</div><select value={mapping.TotalAmount || ""} onChange={e => setMapping(c => ({ ...c, TotalAmount: e.target.value }))} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none"><option value="">-- Select --</option>{headers.map(h => <option key={h} value={h}>{h}</option>)}</select></label>
+                <label className="text-sm"><div className="mb-1 font-medium">Condition</div><select value={mapping.Condition || ""} onChange={e => setMapping(c => ({ ...c, Condition: e.target.value }))} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none"><option value="">-- Select --</option>{headers.map(h => <option key={h} value={h}>{h}</option>)}</select></label>
+                <label className="text-sm"><div className="mb-1 font-medium">Main Category</div><select value={mapping.MainCategory || ""} onChange={e => setMapping(c => ({ ...c, MainCategory: e.target.value }))} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none"><option value="">-- Select --</option>{headers.map(h => <option key={h} value={h}>{h}</option>)}</select></label>
+                <label className="text-sm"><div className="mb-1 font-medium">Commodity Code</div><select value={mapping.CommodityCode || ""} onChange={e => setMapping(c => ({ ...c, CommodityCode: e.target.value }))} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none"><option value="">-- Select --</option>{headers.map(h => <option key={h} value={h}>{h}</option>)}</select></label>
+                <label className="text-sm"><div className="mb-1 font-medium">Commodity Name</div><select value={mapping.CommodityName || ""} onChange={e => setMapping(c => ({ ...c, CommodityName: e.target.value }))} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none"><option value="">-- Select --</option>{headers.map(h => <option key={h} value={h}>{h}</option>)}</select></label>
+                <label className="text-sm"><div className="mb-1 font-medium">Company Code</div><select value={mapping.CompanyCode || ""} onChange={e => setMapping(c => ({ ...c, CompanyCode: e.target.value }))} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none"><option value="">-- Select --</option>{headers.map(h => <option key={h} value={h}>{h}</option>)}</select></label>
+                <label className="text-sm"><div className="mb-1 font-medium">Item Type</div><select value={mapping.ItemType || ""} onChange={e => setMapping(c => ({ ...c, ItemType: e.target.value }))} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none"><option value="">-- Select --</option>{headers.map(h => <option key={h} value={h}>{h}</option>)}</select></label>
+              </div>
+            </div>
+          )}
+          <div className="mt-4 flex flex-wrap gap-3 items-center">
+            <button onClick={buildFromSpreadsheet} disabled={!sheetRows.length} className={`rounded-2xl px-5 py-2.5 text-sm font-medium text-white ${sheetRows.length ? 'bg-sky-600 hover:bg-sky-700' : 'bg-slate-300 cursor-not-allowed'}`}>🔄 Generate Workflow from Template</button>
+            {sheetRows.length > 0 && <span className="text-sm text-slate-600">Ready to import {sheetRows.length} rows</span>}
+          </div>
+          {sheetRows.length > 0 && (
+            <div className="mt-4 rounded-2xl border border-slate-200 p-3 max-h-64 overflow-auto">
+              <div className="text-sm font-medium mb-2">Preview (first 10 rows)</div>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-slate-100">
+                    {headers.slice(0, 6).map(h => <th key={h} className="px-2 py-1 text-left font-medium text-slate-700 border-b">{h}</th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sheetRows.slice(0, 10).map((row, i) => (
+                    <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-slate-50"}>
+                      {headers.slice(0, 6).map(h => <td key={h} className="px-2 py-1 border-b border-slate-100">{row[h] || "-"}</td>)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+      </Section>
+
+      {/* XML Section - full width below */}
+      <Section title="Generated XML" subtitle="Review, validate, and export the Jaggaer-compliant workflow XML.">
+        <textarea value={templateXml} onChange={e => setTemplateXml(e.target.value)} rows={14} className="w-full rounded-2xl border border-slate-200 bg-slate-950 px-3 py-3 font-mono text-xs leading-6 text-emerald-300 outline-none" />
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button onClick={() => setTemplateXml(buildXmlFromForm(form))} className="rounded-2xl bg-sky-600 px-4 py-2 text-sm font-medium text-white">🔄 Regenerate XML</button>
+          <button onClick={() => download(`${form.workflowType}-workflow.xml`, templateXml)} className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">📥 Export XML</button>
+        </div>
+        <div className="mt-4">
+          {validationIssues.length === 0 ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+              ✓ <strong>Valid XML</strong> - Ready to import into Jaggaer
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-amber-800">⚠ Validation Issues:</div>
+              {validationIssues.map(i => <div key={i} className="rounded-xl border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900">• {i}</div>)}
+            </div>
+          )}
+        </div>
+      </Section>
+    </div>
+  );
+};
+
+// ============ QUESTIONNAIRE MODE ============
+const QuestionnaireMode = ({ questionnaire, setQuestionnaire, questionnaireXml, setQuestionnaireXml }) => {
+  const formFromQ = useMemo(() => questionnaireToForm(questionnaire), [questionnaire]);
+  const validationIssues = useMemo(() => validateXml(questionnaireXml), [questionnaireXml]);
+  const questions = useMemo(() => [...QUESTION_BANK.foundations, ...QUESTION_BANK.governance, ...(VERTICALS[questionnaire.vertical]?.questions || []), ...QUESTION_BANK.technical], [questionnaire.vertical]);
+
+  const generateFromQ = () => setQuestionnaireXml(buildXmlFromForm(formFromQ));
+
+  return (
+    <div className="space-y-6">
+      {/* Dashboard at top - full width */}
+      <VisualWorkflowDashboard form={formFromQ} title="Questionnaire Workflow Dashboard" subtitle="Workflow generated from customer answers" />
+
+      {/* Questionnaire and Questions side by side */}
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Section title="Customer Questionnaire" subtitle="Capture customer decisions to generate workflow XML.">
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="text-sm"><div className="mb-1 font-medium">Customer Name</div><input value={questionnaire.customerName} onChange={e => setQuestionnaire(c => ({ ...c, customerName: e.target.value }))} className="w-full rounded-2xl border border-slate-200 px-3 py-2 outline-none" /></label>
+            <label className="text-sm"><div className="mb-1 font-medium">Module</div><select value={questionnaire.module} onChange={e => setQuestionnaire(c => ({ ...c, module: e.target.value, workflowType: WORKFLOW_MODULES[e.target.value][0].id }))} className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none">{Object.keys(WORKFLOW_MODULES).map(m => <option key={m} value={m}>{m}</option>)}</select></label>
+            <label className="text-sm"><div className="mb-1 font-medium">Workflow Type</div><select value={questionnaire.workflowType} onChange={e => setQuestionnaire(c => ({ ...c, workflowType: e.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none">{WORKFLOW_MODULES[questionnaire.module]?.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></label>
+            <label className="text-sm"><div className="mb-1 font-medium">Vertical</div><select value={questionnaire.vertical} onChange={e => setQuestionnaire(c => ({ ...c, vertical: e.target.value }))} className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-2 outline-none">{Object.keys(VERTICALS).map(v => <option key={v} value={v}>{v}</option>)}</select></label>
+            <label className="text-sm"><div className="mb-1 font-medium">High Value Threshold</div><input value={questionnaire.highValueThreshold} onChange={e => setQuestionnaire(c => ({ ...c, highValueThreshold: e.target.value }))} className="w-full rounded-2xl border border-slate-200 px-3 py-2 outline-none" /></label>
+          </div>
+          <div className="mt-4 grid gap-2 md:grid-cols-2">
+            <label className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm"><input type="checkbox" checked={questionnaire.routeByDepartment} onChange={e => setQuestionnaire(c => ({ ...c, routeByDepartment: e.target.checked }))} /> Route by Department</label>
+            <label className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm"><input type="checkbox" checked={questionnaire.routeByCommodity} onChange={e => setQuestionnaire(c => ({ ...c, routeByCommodity: e.target.checked }))} /> Route by Commodity</label>
+            <label className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm"><input type="checkbox" checked={questionnaire.routeByAmount} onChange={e => setQuestionnaire(c => ({ ...c, routeByAmount: e.target.checked }))} /> Route by Amount</label>
+            <label className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm"><input type="checkbox" checked={questionnaire.routeByGl} onChange={e => setQuestionnaire(c => ({ ...c, routeByGl: e.target.checked }))} /> Route by GL</label>
+            <label className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm"><input type="checkbox" checked={questionnaire.includeExpiry} onChange={e => setQuestionnaire(c => ({ ...c, includeExpiry: e.target.checked }))} /> Include Expiry Logic</label>
+            <label className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm"><input type="checkbox" checked={questionnaire.needsInventoryRobot} onChange={e => setQuestionnaire(c => ({ ...c, needsInventoryRobot: e.target.checked }))} /> Inventory Automation</label>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <label className="text-sm"><div className="mb-1 font-medium">Department Folder</div><input value={questionnaire.departmentFolder} onChange={e => setQuestionnaire(c => ({ ...c, departmentFolder: e.target.value }))} className="w-full rounded-2xl border border-slate-200 px-3 py-2 outline-none" /></label>
+            <label className="text-sm"><div className="mb-1 font-medium">Commodity Folder</div><input value={questionnaire.commodityFolder} onChange={e => setQuestionnaire(c => ({ ...c, commodityFolder: e.target.value }))} className="w-full rounded-2xl border border-slate-200 px-3 py-2 outline-none" /></label>
+            <label className="text-sm"><div className="mb-1 font-medium">GL Folder</div><input value={questionnaire.glFolder} onChange={e => setQuestionnaire(c => ({ ...c, glFolder: e.target.value }))} className="w-full rounded-2xl border border-slate-200 px-3 py-2 outline-none" /></label>
+          </div>
+          <textarea value={questionnaire.notes} onChange={e => setQuestionnaire(c => ({ ...c, notes: e.target.value }))} rows={3} className="mt-4 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none" placeholder="Customer notes, assumptions, exceptions..." />
+          <div className="mt-4"><button onClick={generateFromQ} className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">Generate XML from Questionnaire</button></div>
+        </Section>
+
+        <Section title="Workshop Questions" subtitle="Use these prompts during customer workshops.">
+          <div className="space-y-2 max-h-[400px] overflow-auto pr-1">
+            {questions.map((q, i) => <div key={i} className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm"><span className="font-semibold text-slate-900 mr-2">Q{i + 1}.</span>{q}</div>)}
+          </div>
+        </Section>
+      </div>
+
+      {/* XML Section - full width below */}
+      <Section title="Generated XML" subtitle="Review, validate, and export the Jaggaer-compliant workflow XML.">
+        <textarea value={questionnaireXml} onChange={e => setQuestionnaireXml(e.target.value)} rows={14} className="w-full rounded-2xl border border-slate-200 bg-slate-950 px-3 py-3 font-mono text-xs leading-6 text-emerald-300 outline-none" />
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button onClick={generateFromQ} className="rounded-2xl bg-sky-600 px-4 py-2 text-sm font-medium text-white">🔄 Regenerate XML</button>
+          <button onClick={() => download(`${questionnaire.workflowType}-workflow.xml`, questionnaireXml)} className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">📥 Export XML</button>
+        </div>
+        <div className="mt-4">
+          {validationIssues.length === 0 ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+              ✓ <strong>Valid XML</strong> - Ready to import into Jaggaer
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="text-sm font-medium text-amber-800">⚠ Validation Issues:</div>
+              {validationIssues.map(i => <div key={i} className="rounded-xl border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900">• {i}</div>)}
+            </div>
+          )}
+        </div>
+      </Section>
+    </div>
+  );
+};
+
+// ============ MAIN APP ============
+const App = () => {
+  const [mode, setMode] = useState("builder");
+  const [showWelcome, setShowWelcome] = useState(true);
+  const [builderForm, setBuilderForm] = useState(BUILDER_DEFAULTS);
+  const [builderXml, setBuilderXml] = useState(buildXmlFromForm(BUILDER_DEFAULTS));
+  const [templateForm, setTemplateForm] = useState(BUILDER_DEFAULTS);
+  const [templateXml, setTemplateXml] = useState(buildXmlFromForm(BUILDER_DEFAULTS));
+  const [questionnaire, setQuestionnaire] = useState(QUESTIONNAIRE_DEFAULTS);
+  const [questionnaireXml, setQuestionnaireXml] = useState(buildXmlFromForm(questionnaireToForm(QUESTIONNAIRE_DEFAULTS)));
+
+  const handleSelectMode = (selectedMode) => {
+    setMode(selectedMode);
+    setShowWelcome(false);
+  };
+
+  const modeDesc = mode === "builder" ? "Build workflow structure directly in the app" : mode === "template" ? "Import from customer spreadsheet template" : "Use questionnaire to capture customer decisions";
+  const modeIcons = { builder: "🔧", template: "📊", questionnaire: "📋" };
+  const modeColors = { builder: "sky", template: "emerald", questionnaire: "purple" };
+
+  return (
+    <div className="min-h-screen bg-slate-100 text-slate-900">
+      {/* Welcome Modal */}
+      {showWelcome && <WelcomeModal onClose={() => setShowWelcome(false)} onSelectMode={handleSelectMode} />}
+      
+      <div className="mx-auto max-w-7xl p-4 md:p-6">
+        <div className="mb-6 rounded-[28px] bg-gradient-to-r from-slate-900 to-slate-800 p-6 text-white shadow-xl">
+          <div className="grid gap-6 lg:grid-cols-[1.6fr,1fr]">
+            <div>
+              <div className="mb-2 text-sm text-slate-300">Jaggaer Approval Workflow Studio</div>
+              <h1 className="text-3xl font-semibold tracking-tight">Build, Import, or Generate Workflow XML</h1>
+              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">Three workflow-generation modes for solution consultants. Build workflows visually, import from customer templates, or use guided questionnaires to capture requirements.</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <SmallTag>14 Workflow Types</SmallTag>
+                <SmallTag>5 Verticals</SmallTag>
+                <SmallTag>ADW / Dynamic / Static</SmallTag>
+                <SmallTag>XML Export</SmallTag>
+              </div>
+            </div>
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
+              <div className="text-sm text-slate-300">Current Mode</div>
+              <div className="mt-2 text-lg font-semibold flex items-center gap-2">
+                <span className="text-2xl">{modeIcons[mode]}</span>
+                {modeDesc}
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                {["builder", "template", "questionnaire"].map(m => (
+                  <button key={m} onClick={() => setMode(m)} className={`rounded-2xl px-3 py-3 text-sm font-medium transition flex flex-col items-center gap-1 ${mode === m ? "bg-white text-slate-900" : "bg-white/10 text-white hover:bg-white/20"}`}>
+                    <span className="text-lg">{modeIcons[m]}</span>
+                    <span>{m.charAt(0).toUpperCase() + m.slice(1)}</span>
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => setShowWelcome(true)} className="mt-3 text-xs text-slate-400 hover:text-white w-full text-center">
+                Show welcome guide
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {mode === "builder" && <BuilderMode form={builderForm} setForm={setBuilderForm} xmlDraft={builderXml} setXmlDraft={setBuilderXml} />}
+        {mode === "template" && <TemplateMode form={templateForm} setForm={setTemplateForm} templateXml={templateXml} setTemplateXml={setTemplateXml} />}
+        {mode === "questionnaire" && <QuestionnaireMode questionnaire={questionnaire} setQuestionnaire={setQuestionnaire} questionnaireXml={questionnaireXml} setQuestionnaireXml={setQuestionnaireXml} />}
+      </div>
+    </div>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
