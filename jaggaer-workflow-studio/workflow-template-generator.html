@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jaggaer Workflow Template Generator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-slate-50 min-h-screen">
+  <div id="root"></div>
+  <script type="text/babel">
+const { useState } = React;
+
+// Workflow types configuration
+const WORKFLOW_TYPES = {
+  requisition: { 
+    name: "Requisition", 
+    icon: "📋",
+    approvalTypes: ["Standard Approval", "Emergency Approval", "Auto-Approve", "Manager Approval", "Department Approval"],
+    transactionTypes: ["Standard", "Blanket", "Standing Order", "Emergency", "Capital"]
+  },
+  purchaseOrder: { 
+    name: "Purchase Order", 
+    icon: "🛒",
+    approvalTypes: ["PO Approval", "Change Order Approval", "Auto-Approve", "Budget Approval"],
+    transactionTypes: ["Standard PO", "Blanket PO", "Contract PO", "Service PO"]
+  },
+  invoice: { 
+    name: "Invoice", 
+    icon: "🧾",
+    approvalTypes: ["Invoice Approval", "Exception Approval", "Payment Approval", "Auto-Match"],
+    transactionTypes: ["Standard Invoice", "Credit Memo", "Debit Memo", "Prepayment"]
+  },
+  contract: { 
+    name: "Contract", 
+    icon: "📝",
+    approvalTypes: ["Contract Approval", "Legal Review", "Executive Approval", "Renewal Approval"],
+    transactionTypes: ["Master Agreement", "Purchase Agreement", "Service Agreement", "NDA", "Amendment"]
+  },
+  supplierRegistration: { 
+    name: "Supplier Registration", 
+    icon: "🏢",
+    approvalTypes: ["Initial Review", "Compliance Check", "Risk Assessment", "Final Approval"],
+    transactionTypes: ["New Supplier", "Supplier Update", "Reactivation", "Diversity Supplier"]
+  },
+  receipt: { 
+    name: "Receipt", 
+    icon: "📦",
+    approvalTypes: ["Receipt Approval", "Quality Check", "Cost Approval", "Inventory Update"],
+    transactionTypes: ["Quantity Receipt", "Service Receipt", "Return", "Partial Receipt"]
+  },
+  rfq: { 
+    name: "RFQ/Sourcing", 
+    icon: "📊",
+    approvalTypes: ["RFQ Award", "Supplier Agreement", "Bid Evaluation", "Negotiation Approval"],
+    transactionTypes: ["Direct", "Indirect", "Services", "Capital"]
+  }
+};
+
+// Sample data generators
+const generateSampleBusinessUnits = () => [
+  { name: "Corporate HQ", level1: "Corporate HQ", level2: "", level3: "" },
+  { name: "North America Operations", level1: "North America Operations", level2: "", level3: "" },
+  { name: "NA - East Region", level1: "North America Operations", level2: "NA - East Region", level3: "" },
+  { name: "NA - West Region", level1: "North America Operations", level2: "NA - West Region", level3: "" },
+  { name: "Europe Operations", level1: "Europe Operations", level2: "", level3: "" },
+  { name: "EU - UK Division", level1: "Europe Operations", level2: "EU - UK Division", level3: "" },
+  { name: "EU - Germany Division", level1: "Europe Operations", level2: "EU - Germany Division", level3: "" },
+  { name: "Asia Pacific Operations", level1: "Asia Pacific Operations", level2: "", level3: "" },
+  { name: "# End of Matrix #", level1: "", level2: "", level3: "" }
+];
+
+const generateSampleCategories = () => [
+  { name: "1: Direct Materials", level1: "1: Direct Materials", level2: "", level3: "", level4: "" },
+  { name: "1.1: Raw Materials", level1: "1: Direct Materials", level2: "1.1: Raw Materials", level3: "", level4: "" },
+  { name: "1.2: Components", level1: "1: Direct Materials", level2: "1.2: Components", level3: "", level4: "" },
+  { name: "1.2.1: Electronic Components", level1: "1: Direct Materials", level2: "1.2: Components", level3: "1.2.1: Electronic Components", level4: "" },
+  { name: "1.2.2: Mechanical Components", level1: "1: Direct Materials", level2: "1.2: Components", level3: "1.2.2: Mechanical Components", level4: "" },
+  { name: "2: Indirect Materials", level1: "2: Indirect Materials", level2: "", level3: "", level4: "" },
+  { name: "2.1: Office Supplies", level1: "2: Indirect Materials", level2: "2.1: Office Supplies", level3: "", level4: "" },
+  { name: "2.2: IT Equipment", level1: "2: Indirect Materials", level2: "2.2: IT Equipment", level3: "", level4: "" },
+  { name: "2.3: Facilities", level1: "2: Indirect Materials", level2: "2.3: Facilities", level3: "", level4: "" },
+  { name: "3: Services", level1: "3: Services", level2: "", level3: "", level4: "" },
+  { name: "3.1: Professional Services", level1: "3: Services", level2: "3.1: Professional Services", level3: "", level4: "" },
+  { name: "3.2: IT Services", level1: "3: Services", level2: "3.2: IT Services", level3: "", level4: "" },
+  { name: "3.3: Logistics", level1: "3: Services", level2: "3.3: Logistics", level3: "", level4: "" },
+  { name: "4: Capital", level1: "4: Capital", level2: "", level3: "", level4: "" },
+  { name: "4.1: Equipment", level1: "4: Capital", level2: "4.1: Equipment", level3: "", level4: "" },
+  { name: "4.2: Construction", level1: "4: Capital", level2: "4.2: Construction", level3: "", level4: "" }
+];
+
+const generateSampleUsers = () => [
+  { user: "Smith John(100001)", firstName: "John", lastName: "Smith", organization: "Corporate", division: "Finance", department: "Accounts Payable", role: "AP Manager", email: "john.smith@company.com" },
+  { user: "Johnson Mary(100002)", firstName: "Mary", lastName: "Johnson", organization: "Corporate", division: "Finance", department: "Accounts Payable", role: "AP Clerk", email: "mary.johnson@company.com" },
+  { user: "Williams Robert(100003)", firstName: "Robert", lastName: "Williams", organization: "Corporate", division: "Procurement", department: "Strategic Sourcing", role: "Category Manager", email: "robert.williams@company.com" },
+  { user: "Brown Patricia(100004)", firstName: "Patricia", lastName: "Brown", organization: "North America", division: "Operations", department: "Purchasing", role: "Buyer", email: "patricia.brown@company.com" },
+  { user: "Davis Michael(100005)", firstName: "Michael", lastName: "Davis", organization: "North America", division: "Operations", department: "Warehouse", role: "Receiver", email: "michael.davis@company.com" },
+  { user: "Miller Jennifer(100006)", firstName: "Jennifer", lastName: "Miller", organization: "Europe", division: "Finance", department: "Controller", role: "Controller", email: "jennifer.miller@company.com" },
+  { user: "Wilson David(100007)", firstName: "David", lastName: "Wilson", organization: "Corporate", division: "Legal", department: "Contracts", role: "Contract Manager", email: "david.wilson@company.com" },
+  { user: "Moore Elizabeth(100008)", firstName: "Elizabeth", lastName: "Moore", organization: "Corporate", division: "Executive", department: "C-Suite", role: "CFO", email: "elizabeth.moore@company.com" },
+  { user: "Taylor James(100009)", firstName: "James", lastName: "Taylor", organization: "Corporate", division: "Compliance", department: "Risk", role: "Risk Analyst", email: "james.taylor@company.com" },
+  { user: "Anderson Linda(100010)", firstName: "Linda", lastName: "Anderson", organization: "Asia Pacific", division: "Operations", department: "Supply Chain", role: "Supply Chain Manager", email: "linda.anderson@company.com" }
+];
+
+const generateSampleApprovalMatrix = (workflowType) => {
+  const config = WORKFLOW_TYPES[workflowType];
+  const businessUnits = generateSampleBusinessUnits().filter(bu => bu.name !== "# End of Matrix #");
+  const categories = generateSampleCategories().slice(0, 5);
+  
+  const matrix = [];
+  const amounts = [
+    { min: 0, max: 1000 },
+    { min: 1000, max: 5000 },
+    { min: 5000, max: 25000 },
+    { min: 25000, max: 100000 },
+    { min: 100000, max: 500000 },
+    { min: 500000, max: "" }
+  ];
+  
+  // Generate sample rows
+  businessUnits.slice(0, 3).forEach(bu => {
+    categories.slice(0, 3).forEach(cat => {
+      config.transactionTypes.slice(0, 2).forEach(txnType => {
+        amounts.slice(0, 3).forEach((amt, idx) => {
+          matrix.push({
+            businessUnit: bu.name,
+            category: cat.name,
+            transactionType: txnType,
+            minValue: amt.min,
+            maxValue: amt.max,
+            approvalType: config.approvalTypes[Math.min(idx, config.approvalTypes.length - 1)],
+            approver1: generateSampleUsers()[idx % 10].user,
+            approver2: idx > 0 ? generateSampleUsers()[(idx + 1) % 10].user : "",
+            approver3: idx > 1 ? generateSampleUsers()[(idx + 2) % 10].user : "",
+            approver4: "",
+            approver5: ""
+          });
+        });
+      });
+    });
+  });
+  
+  return matrix.slice(0, 20); // Limit sample data
+};
+
+// Excel generation function
+const generateExcelTemplate = (workflowType) => {
+  const config = WORKFLOW_TYPES[workflowType];
+  const wb = XLSX.utils.book_new();
+  
+  // 1. Approval Matrix Sheet
+  const matrixData = [
+    [`${config.name} Approval Matrix Configuration`],
+    ["Business Unit", "Category", "Transaction Type", "Min Value (Included)", "Max Value (Excluded)", "Approval Type", 
+     "Approver 1", "Approver 2", "Approver 3", "Approver 4", "Approver 5", "Approver 6", "Approver 7", "Approver 8", "Approver 9", "Approver 10"],
+    ...generateSampleApprovalMatrix(workflowType).map(row => [
+      row.businessUnit, row.category, row.transactionType, row.minValue, row.maxValue, row.approvalType,
+      row.approver1, row.approver2, row.approver3, row.approver4, row.approver5, "", "", "", "", ""
+    ])
+  ];
+  const wsMatrix = XLSX.utils.aoa_to_sheet(matrixData);
+  
+  // Set column widths
+  wsMatrix['!cols'] = [
+    { wch: 35 }, { wch: 30 }, { wch: 20 }, { wch: 18 }, { wch: 18 }, { wch: 20 },
+    { wch: 30 }, { wch: 30 }, { wch: 30 }, { wch: 30 }, { wch: 30 },
+    { wch: 30 }, { wch: 30 }, { wch: 30 }, { wch: 30 }, { wch: 30 }
+  ];
+  XLSX.utils.book_append_sheet(wb, wsMatrix, "Approval Matrix");
+  
+  // 2. Instructions Sheet
+  const instructionsData = [
+    ["Instructions for Completing the Approval Matrix"],
+    [""],
+    ["Colour Legend"],
+    ["Response Required - Fill in all yellow highlighted cells"],
+    ["Response Optional - Blue cells are optional"],
+    ["Do Not Modify - Grey cells contain formulas or references"],
+    [""],
+    ["Column Descriptions:"],
+    ["Business Unit", "Select from the Business Unit Tree dropdown. This determines which organizational unit the rule applies to."],
+    ["Category", "Select from the Categories dropdown. This determines which spend category the rule applies to."],
+    ["Transaction Type", `Select the type of ${config.name.toLowerCase()} transaction.`],
+    ["Min Value (Included)", "Enter the minimum value threshold (inclusive). Leave blank for no minimum."],
+    ["Max Value (Excluded)", "Enter the maximum value threshold (exclusive). Leave blank for no maximum."],
+    ["Approval Type", "Select the type of approval required for this rule."],
+    ["Approver 1-10", "Select approvers from the Users dropdown. Approvers are evaluated in sequence."],
+    [""],
+    ["Tips:"],
+    ["- Use # End of Matrix # in Business Unit column to mark the end of your data"],
+    ["- Amount ranges should not overlap for the same Business Unit/Category/Transaction Type combination"],
+    ["- At least one approver is required for each rule"],
+    ["- Rules are evaluated in order from top to bottom"]
+  ];
+  const wsInstructions = XLSX.utils.aoa_to_sheet(instructionsData);
+  wsInstructions['!cols'] = [{ wch: 25 }, { wch: 80 }];
+  XLSX.utils.book_append_sheet(wb, wsInstructions, "Instructions");
+  
+  // 3. Business Unit Tree Sheet
+  const businessUnits = generateSampleBusinessUnits();
+  const buData = [
+    ["Business Unit", "Level 1", "Level 2", "Level 3"],
+    ...businessUnits.map(bu => [bu.name, bu.level1, bu.level2, bu.level3])
+  ];
+  const wsBU = XLSX.utils.aoa_to_sheet(buData);
+  wsBU['!cols'] = [{ wch: 40 }, { wch: 35 }, { wch: 35 }, { wch: 35 }];
+  XLSX.utils.book_append_sheet(wb, wsBU, "Business Unit Tree");
+  
+  // 4. Settings Sheet
+  const settingsData = [
+    ["Amount Thresholds", "Transaction Types", "Approval Types"],
+    ["1000", config.transactionTypes[0] || "", config.approvalTypes[0] || "(default)"],
+    ["5000", config.transactionTypes[1] || "", config.approvalTypes[1] || ""],
+    ["25000", config.transactionTypes[2] || "", config.approvalTypes[2] || ""],
+    ["100000", config.transactionTypes[3] || "", config.approvalTypes[3] || ""],
+    ["500000", config.transactionTypes[4] || "", config.approvalTypes[4] || ""],
+    ["1000000", "", ""],
+    ["5000000", "", ""]
+  ];
+  const wsSettings = XLSX.utils.aoa_to_sheet(settingsData);
+  wsSettings['!cols'] = [{ wch: 20 }, { wch: 25 }, { wch: 25 }];
+  XLSX.utils.book_append_sheet(wb, wsSettings, "Settings");
+  
+  // 5. Categories Sheet
+  const categories = generateSampleCategories();
+  const catData = [
+    ["Category", "Level 1", "Level 2", "Level 3", "Level 4"],
+    ...categories.map(cat => [cat.name, cat.level1, cat.level2, cat.level3, cat.level4])
+  ];
+  const wsCat = XLSX.utils.aoa_to_sheet(catData);
+  wsCat['!cols'] = [{ wch: 35 }, { wch: 25 }, { wch: 30 }, { wch: 30 }, { wch: 30 }];
+  XLSX.utils.book_append_sheet(wb, wsCat, "Categories");
+  
+  // 6. Users Sheet
+  const users = generateSampleUsers();
+  const userData = [
+    ["User", "First Name", "Last Name", "Organization", "Division", "Department", "User Role", "Email"],
+    ...users.map(u => [u.user, u.firstName, u.lastName, u.organization, u.division, u.department, u.role, u.email])
+  ];
+  const wsUsers = XLSX.utils.aoa_to_sheet(userData);
+  wsUsers['!cols'] = [{ wch: 30 }, { wch: 15 }, { wch: 15 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 20 }, { wch: 35 }];
+  XLSX.utils.book_append_sheet(wb, wsUsers, "Users");
+  
+  // 7. Workflow Steps Sheet (for XML generation reference)
+  const stepsData = [
+    [`${config.name} Workflow Steps Configuration`],
+    ["Step Name", "Activity Name", "Activity Type", "Folder Selection Rule", "Folder Name", "Robot Name", "Rule Group Internal Name", "Rule Expression", "Help Text", "Support Note", "Flags", "Order"],
+    ["Approval Step 1", "Approval1", "manual", "MultiElementDynamic", "", "", "Approval 1", 'Document.RequiresRuleGroupEvaluation("Approval 1") == true', "First level approval", "Route to appropriate approvers", "", "1"],
+    ["Department Approval", "DeptApproval", "manual", "Department", "", "", "", "Document.RequiresDepartmentalApproval() == true", "Department manager approval", "", "", "2"],
+    ["Final Processing", "FinalProcess", "automated", "ExplicitFolder", "Process Folder", "ProcessingRobot", "", "true", "Automated processing step", "System processing", "NoBypass", "3"]
+  ];
+  const wsSteps = XLSX.utils.aoa_to_sheet(stepsData);
+  wsSteps['!cols'] = [
+    { wch: 25 }, { wch: 20 }, { wch: 15 }, { wch: 22 }, { wch: 20 }, { wch: 20 }, 
+    { wch: 25 }, { wch: 50 }, { wch: 30 }, { wch: 30 }, { wch: 15 }, { wch: 8 }
+  ];
+  XLSX.utils.book_append_sheet(wb, wsSteps, "Workflow Steps");
+  
+  // 8. Folders Sheet
+  const foldersData = [
+    [`${config.name} Workflow Folders Configuration`],
+    ["Folder Name", "Folder Type", "Robot Name", "Approvers", "Description"],
+    ["Process Folder", "automated", "ProcessingRobot", "", "Automated processing folder"],
+    ["Review Folder", "shared", "", "reviewer@company.com", "Manual review folder"],
+    ["Exception Folder", "shared", "", "exception.handler@company.com", "Exception handling folder"]
+  ];
+  const wsFolders = XLSX.utils.aoa_to_sheet(foldersData);
+  wsFolders['!cols'] = [{ wch: 25 }, { wch: 15 }, { wch: 25 }, { wch: 35 }, { wch: 40 }];
+  XLSX.utils.book_append_sheet(wb, wsFolders, "Folders");
+  
+  // 9. Rule Groups Sheet
+  const ruleGroupsData = [
+    [`${config.name} ADW Rule Groups Configuration`],
+    ["Rule Group Name", "Description", "Linked to Step"],
+    ["Approval 1", "First level approval rules based on amount and category", "Approval Step 1"],
+    ["Omit from Approval 1", "Rules to skip first level approval", "Approval Step 1"],
+    ["Exception Handling", "Rules for exception routing", "Exception Step"]
+  ];
+  const wsRuleGroups = XLSX.utils.aoa_to_sheet(ruleGroupsData);
+  wsRuleGroups['!cols'] = [{ wch: 25 }, { wch: 50 }, { wch: 25 }];
+  XLSX.utils.book_append_sheet(wb, wsRuleGroups, "Rule Groups");
+  
+  return wb;
+};
+
+// Download function
+const downloadExcel = (workflowType) => {
+  const wb = generateExcelTemplate(workflowType);
+  const config = WORKFLOW_TYPES[workflowType];
+  XLSX.writeFile(wb, `${workflowType}_workflow_template.xlsx`);
+};
+
+const downloadAllTemplates = () => {
+  Object.keys(WORKFLOW_TYPES).forEach((type, idx) => {
+    setTimeout(() => downloadExcel(type), idx * 500);
+  });
+};
+
+// React App
+const App = () => {
+  const [selectedType, setSelectedType] = useState(null);
+  
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex items-center gap-4">
+            <span className="text-3xl">📊</span>
+            <div>
+              <h1 className="text-xl font-bold text-slate-900">Jaggaer Workflow Template Generator</h1>
+              <p className="text-sm text-slate-500">Generate Excel templates with dropdowns for approval matrix configuration</p>
+            </div>
+          </div>
+        </div>
+      </header>
+      
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-6">
+          <h2 className="text-lg font-bold text-slate-900 mb-4">📥 Download Workflow Templates</h2>
+          <p className="text-slate-600 mb-6">
+            Select a workflow type to download an Excel template with multiple sheets including:
+            <strong> Approval Matrix, Business Units, Categories, Users, Workflow Steps, Folders, and Rule Groups</strong>.
+            Each template includes dropdown references for easy data entry.
+          </p>
+          
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-6">
+            {Object.entries(WORKFLOW_TYPES).map(([type, config]) => (
+              <div 
+                key={type} 
+                className={`rounded-xl p-5 border-2 transition-all cursor-pointer ${
+                  selectedType === type 
+                    ? "border-blue-500 bg-blue-50 shadow-md" 
+                    : "border-slate-200 bg-white hover:border-blue-300 hover:shadow"
+                }`}
+                onClick={() => setSelectedType(type)}
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <span className="text-2xl">{config.icon}</span>
+                    <h3 className="font-semibold text-slate-900 mt-1">{config.name}</h3>
+                  </div>
+                </div>
+                <div className="text-xs text-slate-500 mb-3">
+                  <div className="mb-1"><strong>Approval Types:</strong></div>
+                  <div className="flex flex-wrap gap-1">
+                    {config.approvalTypes.slice(0, 3).map((at, i) => (
+                      <span key={i} className="bg-slate-100 px-1.5 py-0.5 rounded text-xs">{at}</span>
+                    ))}
+                    {config.approvalTypes.length > 3 && <span className="text-slate-400">+{config.approvalTypes.length - 3}</span>}
+                  </div>
+                </div>
+                <button 
+                  onClick={(e) => { e.stopPropagation(); downloadExcel(type); }}
+                  className="w-full px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+                >
+                  Download Template
+                </button>
+              </div>
+            ))}
+          </div>
+          
+          <button 
+            onClick={downloadAllTemplates}
+            className="px-6 py-3 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700"
+          >
+            📦 Download All Templates
+          </button>
+        </div>
+        
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-6">
+          <h2 className="text-lg font-bold text-slate-900 mb-4">📋 Template Structure</h2>
+          <p className="text-slate-600 mb-4">Each Excel template contains the following sheets:</p>
+          
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
+              <h3 className="font-semibold text-blue-900 mb-2">📊 Approval Matrix</h3>
+              <p className="text-sm text-blue-700 mb-2">Main configuration sheet with:</p>
+              <ul className="text-xs text-blue-600 list-disc list-inside">
+                <li>Business Unit (dropdown)</li>
+                <li>Category (dropdown)</li>
+                <li>Transaction Type (dropdown)</li>
+                <li>Amount thresholds</li>
+                <li>Approval Type (dropdown)</li>
+                <li>Approvers 1-10 (dropdown)</li>
+              </ul>
+            </div>
+            
+            <div className="bg-green-50 rounded-xl p-4 border border-green-200">
+              <h3 className="font-semibold text-green-900 mb-2">🏢 Business Unit Tree</h3>
+              <p className="text-sm text-green-700 mb-2">Organizational hierarchy:</p>
+              <ul className="text-xs text-green-600 list-disc list-inside">
+                <li>Business Unit name</li>
+                <li>Level 1-3 hierarchy</li>
+                <li>Used as dropdown source</li>
+              </ul>
+            </div>
+            
+            <div className="bg-purple-50 rounded-xl p-4 border border-purple-200">
+              <h3 className="font-semibold text-purple-900 mb-2">📁 Categories</h3>
+              <p className="text-sm text-purple-700 mb-2">Spend category hierarchy:</p>
+              <ul className="text-xs text-purple-600 list-disc list-inside">
+                <li>Category name</li>
+                <li>Level 1-4 hierarchy</li>
+                <li>Used as dropdown source</li>
+              </ul>
+            </div>
+            
+            <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
+              <h3 className="font-semibold text-amber-900 mb-2">👥 Users</h3>
+              <p className="text-sm text-amber-700 mb-2">User directory:</p>
+              <ul className="text-xs text-amber-600 list-disc list-inside">
+                <li>User ID and name</li>
+                <li>Organization/Division/Dept</li>
+                <li>Role and email</li>
+                <li>Used as approver dropdown</li>
+              </ul>
+            </div>
+            
+            <div className="bg-rose-50 rounded-xl p-4 border border-rose-200">
+              <h3 className="font-semibold text-rose-900 mb-2">⚙️ Settings</h3>
+              <p className="text-sm text-rose-700 mb-2">Configuration options:</p>
+              <ul className="text-xs text-rose-600 list-disc list-inside">
+                <li>Amount thresholds</li>
+                <li>Transaction types</li>
+                <li>Approval types</li>
+              </ul>
+            </div>
+            
+            <div className="bg-teal-50 rounded-xl p-4 border border-teal-200">
+              <h3 className="font-semibold text-teal-900 mb-2">🔧 Workflow Steps</h3>
+              <p className="text-sm text-teal-700 mb-2">XML generation reference:</p>
+              <ul className="text-xs text-teal-600 list-disc list-inside">
+                <li>Step/Activity configuration</li>
+                <li>Folder rules</li>
+                <li>Rule expressions</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-white rounded-2xl border border-slate-200 p-6">
+          <h2 className="text-lg font-bold text-slate-900 mb-4">📌 How to Use</h2>
+          <div className="grid md:grid-cols-2 gap-6">
+            <div>
+              <h3 className="font-semibold text-slate-800 mb-2">Step 1: Download Template</h3>
+              <p className="text-sm text-slate-600 mb-4">Select the workflow type that matches your transaction type and download the Excel template.</p>
+              
+              <h3 className="font-semibold text-slate-800 mb-2">Step 2: Populate Reference Data</h3>
+              <p className="text-sm text-slate-600 mb-4">
+                Update the <strong>Business Unit Tree</strong>, <strong>Categories</strong>, and <strong>Users</strong> sheets 
+                with your organization's actual data. These sheets serve as dropdown sources.
+              </p>
+              
+              <h3 className="font-semibold text-slate-800 mb-2">Step 3: Configure Approval Matrix</h3>
+              <p className="text-sm text-slate-600">
+                Use the dropdowns in the <strong>Approval Matrix</strong> sheet to define your approval rules 
+                based on business unit, category, transaction type, and amount thresholds.
+              </p>
+            </div>
+            <div>
+              <h3 className="font-semibold text-slate-800 mb-2">Step 4: Define Workflow Steps</h3>
+              <p className="text-sm text-slate-600 mb-4">
+                Configure the <strong>Workflow Steps</strong> sheet to define the activities that will be 
+                generated in the XML workflow definition.
+              </p>
+              
+              <h3 className="font-semibold text-slate-800 mb-2">Step 5: Import to Workflow Studio</h3>
+              <p className="text-sm text-slate-600 mb-4">
+                Upload the completed template to the Workflow Studio to generate the workflow XML 
+                and ADW rule group configurations.
+              </p>
+              
+              <div className="bg-amber-50 rounded-xl p-4 border border-amber-200">
+                <h4 className="font-semibold text-amber-800 mb-1">💡 Tip</h4>
+                <p className="text-sm text-amber-700">
+                  Use "# End of Matrix #" in the Business Unit column to mark the end of your approval rules.
+                  This helps the import process identify the data range.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+      
+      <footer className="bg-white border-t border-slate-200 mt-8 py-4">
+        <div className="max-w-7xl mx-auto px-6 text-center text-sm text-slate-500">
+          Jaggaer Workflow Template Generator • Based on Kongsberg Discovery Solution Summary Document structure
+        </div>
+      </footer>
+    </div>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
