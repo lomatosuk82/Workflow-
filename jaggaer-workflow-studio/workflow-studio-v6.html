@@ -2215,9 +2215,13 @@ const App = () => {
 
   // Load default template for workflow type
   const loadDefaultTemplate = (wfType) => {
-    console.log("Loading template for:", wfType);
+    alert("Loading template for: " + wfType);
     const template = DEFAULT_TEMPLATES[wfType];
-    console.log("Template found:", template);
+    if (!template) {
+      alert("ERROR: No template found for " + wfType);
+      return;
+    }
+    alert("Template has " + template.steps.length + " steps");
     if (template) {
       // Load steps with unique IDs
       const timestamp = Date.now();
