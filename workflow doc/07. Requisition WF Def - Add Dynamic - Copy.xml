@@ -1,0 +1,190 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE ProcessDefinition SYSTEM "https://usertest.sciquest.com/app_docs/dtd/workflow/WorkflowDefinition.dtd">
+<ProcessDefinition>
+  <WorkflowType>requisition</WorkflowType>
+  <Usable>true</Usable>
+  <Version>4</Version>
+  <VersionDescription>Add Dynamic Department Step</VersionDescription>
+  <!--====== Steps ======-->
+  <Step name="Return 1">
+    <Attribute name="wfActivityHelp">
+      <AttrValue lang="default">Help for Return 1.</AttrValue>
+    </Attribute>
+  </Step>
+  <Step name="Return 2">
+    <Attribute name="wfActivityHelp">
+      <AttrValue lang="default">Help for Return 2.</AttrValue>
+    </Attribute>
+  </Step>
+  <Step name="Initial Fiscal Year End">
+    <Attribute name="wfActivityHelp">
+      <AttrValue lang="default">Help for Initial Fiscal Year End.</AttrValue>
+    </Attribute>
+  </Step>
+  <Step name="Approval 1">
+    <Attribute name="wfActivityHelp">
+      <AttrValue lang="default">Help for Approval 1</AttrValue>
+    </Attribute>
+  </Step>
+  <Step name="Approval 2">
+    <Attribute name="wfActivityHelp">
+      <AttrValue lang="default">Help for Approval 2</AttrValue>
+    </Attribute>
+  </Step>
+  <Step name="Department Approval">
+    <Attribute name="wfActivityHelp">
+      <AttrValue lang="default">Help for Department Approval</AttrValue>
+    </Attribute>
+  </Step>
+  <Step name="EHS Check">
+    <Attribute name="wfActivityHelp">
+      <AttrValue lang="default">Help for EHS Check</AttrValue>
+    </Attribute>
+  </Step>
+  <Step name="Final Fiscal Year End">
+    <Attribute name="wfActivityHelp">
+      <AttrValue lang="default">Help for Final Fiscal Year End.</AttrValue>
+    </Attribute>
+  </Step>
+  <Step name="Create PO">
+    <IconUrl>/art/icon_po.gif</IconUrl>
+    <Attribute name="wfActivityHelp">
+      <AttrValue lang="default">System step to generate Purchase Order</AttrValue>
+    </Attribute>
+  </Step>
+  <!--====== Activities ======-->
+  <Activity name="START">
+    <ActivityType>start</ActivityType>
+    <Rule />
+    <FolderSelectionRule>Dummy</FolderSelectionRule>
+  </Activity>
+  <Activity name="Return1">
+    <ActivityType>automated</ActivityType>
+    <StepRef name="Return 1" />
+    <FolderRef name="Auto-Return" />
+    <Rule><![CDATA[Document.RequiresRuleGroupEvaluation("Return 1") == true]]></Rule>
+    <FolderSelectionRule>ExplicitFolder</FolderSelectionRule>
+    <Attribute name="wfActivitySupportNote">
+      <AttrValue lang="default">Support note for Return 1</AttrValue>
+    </Attribute>
+    <Attribute name="wfActivityHelp">
+      <AttrValue lang="default">Help for Return 1</AttrValue>
+    </Attribute>
+  </Activity>
+  <Activity name="Return2">
+    <ActivityType>automated</ActivityType>
+    <StepRef name="Return 2" />
+    <FolderRef name="Auto-Return" />
+    <Rule><![CDATA[Document.RequiresRuleGroupEvaluation("Return 2") == true]]></Rule>
+    <FolderSelectionRule>ExplicitFolder</FolderSelectionRule>
+    <Attribute name="wfActivitySupportNote">
+      <AttrValue lang="default">Support note for Return 1</AttrValue>
+    </Attribute>
+    <Attribute name="wfActivityHelp">
+      <AttrValue lang="default">Help for Return 1</AttrValue>
+    </Attribute>
+  </Activity>
+  <Activity name="InitialFiscalYearEnd">
+    <ActivityType>manual</ActivityType>
+    <StepRef name="Initial Fiscal Year End" />
+    <Rule><![CDATA[Document.RequiresRuleGroupEvaluation("Fiscal Year End Hold") == true]]></Rule>
+    <FolderSelectionRule>MultiElementDynamic</FolderSelectionRule>
+    <Attribute name="RuleGroupInternalName">
+      <AttrValue lang="default">Initial Fiscal Year End Hold</AttrValue>
+    </Attribute>
+    <Attribute name="wfActivitySupportNote">
+      <AttrValue lang="default">Stops requisitions to hold while ERP is down for processing Fiscal Year End</AttrValue>
+    </Attribute>
+    <Attribute name="wfActivityHelp">
+      <AttrValue lang="default">Help for Initial Fiscal Year End Hold</AttrValue>
+    </Attribute>
+  </Activity>
+  <Activity name="Approval-1">
+    <ActivityType>manual</ActivityType>
+    <StepRef name="Approval 1" />
+    <Rule><![CDATA[Document.RequiresRuleGroupEvaluation("Approval 1") == true && Document.RequiresRuleGroupEvaluation("Omit from Approval 1") == false]]></Rule>
+    <FolderSelectionRule>MultiElementDynamic</FolderSelectionRule>
+    <Attribute name="RuleGroupInternalName">
+      <AttrValue lang="default">Approval 1</AttrValue>
+    </Attribute>
+    <Attribute name="wfActivitySupportNote">
+      <AttrValue lang="default">Support note for Approval 1</AttrValue>
+    </Attribute>
+    <Attribute name="wfActivityHelp">
+      <AttrValue lang="default">Help for Approval 1</AttrValue>
+    </Attribute>
+  </Activity>
+  <Activity name="Approval-2">
+    <ActivityType>manual</ActivityType>
+    <StepRef name="Approval 2" />
+    <Rule><![CDATA[Document.RequiresRuleGroupEvaluation("Approval 2") == true && Document.RequiresRuleGroupEvaluation("Omit from Approval 2") == false]]></Rule>
+    <FolderSelectionRule>MultiElementDynamic</FolderSelectionRule>
+    <Attribute name="RuleGroupInternalName">
+      <AttrValue lang="default">Approval 2</AttrValue>
+    </Attribute>
+    <Attribute name="wfActivitySupportNote">
+      <AttrValue lang="default">Support note for Approval 2</AttrValue>
+    </Attribute>
+    <Attribute name="wfActivityHelp">
+      <AttrValue lang="default">Help for Approval 2</AttrValue>
+    </Attribute>
+  </Activity>
+<Activity name="DepartmentApproval">
+  <ActivityType>manual</ActivityType>
+  <StepRef name="Department Approval" />
+  <Rule><![CDATA[  Document.RequiresDepartmentalApproval()  == true  ]]></Rule>
+  <FolderSelectionRule>Department</FolderSelectionRule>
+</Activity>
+  <Activity name="EHSCheck">
+   <ActivityType>manual</ActivityType>
+   <StepRef name="EHS Check" />
+   <FolderRef name="EHS Check" />
+   <Rule><![CDATA[  [Product.Toxin=true] || [Product.Hazardous=true] ]]></Rule>
+   <FolderSelectionRule>ExplicitFolder</FolderSelectionRule>
+ </Activity>
+  <Activity name="FinalFiscalYearEnd">
+    <ActivityType>manual</ActivityType>
+    <StepRef name="Final Fiscal Year End" />
+    <Rule><![CDATA[Document.RequiresRuleGroupEvaluation("Fiscal Year End Hold") == true]]></Rule>
+    <FolderSelectionRule>MultiElementDynamic</FolderSelectionRule>
+    <Attribute name="RuleGroupInternalName">
+      <AttrValue lang="default">Final Fiscal Year End Hold</AttrValue>
+    </Attribute>
+    <Attribute name="wfActivitySupportNote">
+      <AttrValue lang="default">Stops requisitions to hold while ERP is down for processing Fiscal Year End</AttrValue>
+    </Attribute>
+    <Attribute name="wfActivityHelp">
+      <AttrValue lang="default">Help for Final Fiscal Year End Hold</AttrValue>
+    </Attribute>
+  </Activity>
+  <Activity name="CreatePO">
+    <ActivityType>automated</ActivityType>
+    <StepRef name="Create PO" />
+    <FolderRef name="Create PO" />
+    <Rule><![CDATA[Document.RequiresRuleGroupEvaluation("Omit from Create PO") == false]]></Rule>
+    <FolderSelectionRule>ExplicitFolder</FolderSelectionRule>
+    <Flag>NoBypass</Flag>
+    <Attribute name="wfActivitySupportNote">
+      <AttrValue lang="default">Creates POs in SciQuest</AttrValue>
+    </Attribute>
+    <Attribute name="wfActivityHelp">
+      <AttrValue lang="default">Help for Create PO</AttrValue>
+    </Attribute>
+  </Activity>
+  <Activity name="END">
+    <ActivityType>end</ActivityType>
+    <Rule />
+    <FolderSelectionRule>Dummy</FolderSelectionRule>
+  </Activity>
+  <!--====== Activity relationships ======-->
+  <ActivityRelationship previous="START" next="Return1" />
+  <ActivityRelationship previous="Return1" next="Return2" />
+  <ActivityRelationship previous="Return2" next="InitialFiscalYearEnd" />
+  <ActivityRelationship previous="InitialFiscalYearEnd" next="Approval-1" />
+  <ActivityRelationship previous="Approval-1" next="Approval-2" />
+  <ActivityRelationship previous="Approval-2" next="DepartmentApproval" />
+  <ActivityRelationship previous="DepartmentApproval" next="EHSCheck" />
+  <ActivityRelationship previous="EHSCheck" next="FinalFiscalYearEnd" />
+  <ActivityRelationship previous="FinalFiscalYearEnd" next="CreatePO" />
+  <ActivityRelationship previous="CreatePO" next="END" />
+</ProcessDefinition>

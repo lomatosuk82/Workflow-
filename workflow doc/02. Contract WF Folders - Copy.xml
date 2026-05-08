@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE WorkflowFolderMessage SYSTEM "https://rambo.sciquest.com/app_docs/dtd/workflow/WorkflowFolder.dtd">
+<WorkflowFolderMessage>
+  <Folder name="Compile File" folderType="automated">
+    <WorkflowType>contract</WorkflowType>
+    <FolderRobot>CompileContractRobot</FolderRobot>
+  </Folder>
+  <Folder name="Signature Robot" folderType="automated">
+    <WorkflowType>contract</WorkflowType>
+    <FolderRobot>ContractEsignServiceRobot</FolderRobot>
+  </Folder>
+  <Folder name="ESignature Setup" folderType="shared">
+    <WorkflowType>contract</WorkflowType>
+  </Folder>
+  <Folder name="Upload Signed Document" folderType="shared">
+    <WorkflowType>contract</WorkflowType>
+  </Folder>
+</WorkflowFolderMessage>

@@ -1,0 +1,795 @@
+Date: Thu, 7 May 2026 09:58:15 +0000 (UTC)
+Message-ID: <1154964589.45.1778147895143@e6b64d897204>
+Subject: Exported From Confluence
+MIME-Version: 1.0
+Content-Type: multipart/related; 
+	boundary="----=_Part_44_1322624669.1778147895142"
+
+------=_Part_44_1322624669.1778147895142
+Content-Type: text/html; charset=UTF-8
+Content-Transfer-Encoding: quoted-printable
+Content-Location: file:///C:/exported.html
+
+<html xmlns:o=3D'urn:schemas-microsoft-com:office:office'
+      xmlns:w=3D'urn:schemas-microsoft-com:office:word'
+      xmlns:v=3D'urn:schemas-microsoft-com:vml'
+      xmlns=3D'urn:w3-org-ns:HTML'>
+<head>
+    <meta http-equiv=3D"Content-Type" content=3D"text/html; charset=3Dutf-8=
+">
+    <title>Workflow Activity Configuration</title>
+    <!--[if gte mso 9]>
+    <xml>
+        <o:OfficeDocumentSettings>
+            <o:TargetScreenSize>1024x640</o:TargetScreenSize>
+            <o:PixelsPerInch>72</o:PixelsPerInch>
+            <o:AllowPNG/>
+        </o:OfficeDocumentSettings>
+        <w:WordDocument>
+            <w:View>Print</w:View>
+            <w:Zoom>90</w:Zoom>
+            <w:DoNotOptimizeForBrowser/>
+        </w:WordDocument>
+    </xml>
+    <![endif]-->
+    <style>
+                <!--
+        @page Section1 {
+            size: 8.5in 11.0in;
+            margin: 1.0in;
+            mso-header-margin: .5in;
+            mso-footer-margin: .5in;
+            mso-paper-source: 0;
+        }
+
+        table {
+            border: solid 1px;
+            border-collapse: collapse;
+        }
+
+        table td, table th {
+            border: solid 1px;
+            padding: 5px;
+        }
+
+        td {
+            page-break-inside: avoid;
+        }
+
+        tr {
+            page-break-after: avoid;
+        }
+
+        div.Section1 {
+            page: Section1;
+        }
+
+        /* Confluence print stylesheet. Common to all themes for print medi=
+a */
+/* Full of !important until we improve batching for print CSS */
+
+@media print {
+    #main {
+        padding-bottom: 1em !important; /* The default padding of 6em is to=
+o much for printouts */
+    }
+
+    body {
+        font: var(--ds-font-body-small, Arial, Helvetica, FreeSans, sans-se=
+rif);
+    }
+
+    body, #full-height-container, #main, #page, #content, .has-personal-sid=
+ebar #content {
+        background: var(--ds-surface, #fff) !important;
+        color: var(--ds-text, #000) !important;
+        border: 0 !important;
+        width: 100% !important;
+        height: auto !important;
+        min-height: auto !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        display: block !important;
+    }
+
+    a, a:link, a:visited, a:focus, a:hover, a:active {
+        color: var(--ds-text, #000);
+    }
+
+    #content h1,
+    #content h2,
+    #content h3,
+    #content h4,
+    #content h5,
+    #content h6 {
+        page-break-after: avoid;
+    }
+
+    pre {
+        font: var(--ds-font-code, Monaco, "Courier New", monospace);
+    }
+
+    #header,
+    .aui-header-inner,
+    #navigation,
+    #sidebar,
+    .sidebar,
+    #personal-info-sidebar,
+    .ia-fixed-sidebar,
+    .page-actions,
+    .navmenu,
+    .ajs-menu-bar,
+    .noprint,
+    .inline-control-link,
+    .inline-control-link a,
+    a.show-labels-editor,
+    .global-comment-actions,
+    .comment-actions,
+    .quick-comment-container,
+    #addcomment {
+        display: none !important;
+    }
+
+    /* CONF-28544 cannot print multiple pages in IE */
+    #splitter-content {
+        position: relative !important;
+    }
+
+    .comment .date::before {
+        content: none !important; /* remove middot for print view */
+    }
+
+    h1.pagetitle img {
+        height: auto;
+        width: auto;
+    }
+
+    .print-only {
+        display: block;
+    }
+
+    #footer {
+        position: relative !important; /* CONF-17506 Place the footer at en=
+d of the content */
+        margin: 0;
+        padding: 0;
+        background: none;
+        clear: both;
+    }
+
+    #poweredby {
+        border-top: none;
+        background: none;
+    }
+
+    #poweredby li.print-only {
+        display: list-item;
+        font-style: italic;
+    }
+
+    #poweredby li.noprint {
+        display: none;
+    }
+
+    /* no width controls in print */
+    .wiki-content .table-wrap,
+    .wiki-content p,
+    .panel .codeContent,
+    .panel .codeContent pre,
+    .image-wrap {
+        overflow: visible !important;
+    }
+
+    /* TODO - should this work? */
+    #children-section,
+    #comments-section .comment,
+    #comments-section .comment .comment-body,
+    #comments-section .comment .comment-content,
+    #comments-section .comment p {
+        page-break-inside: avoid;
+    }
+
+    #page-children a {
+        text-decoration: none;
+    }
+
+    /**
+     hide twixies
+
+     the specificity here is a hack because print styles
+     are getting loaded before the base styles. */
+    #comments-section.pageSection .section-header,
+    #comments-section.pageSection .section-title,
+    #children-section.pageSection .section-header,
+    #children-section.pageSection .section-title,
+    .children-show-hide {
+        padding-left: 0;
+        margin-left: 0;
+    }
+
+    .children-show-hide.icon {
+        display: none;
+    }
+
+    /* personal sidebar */
+    .has-personal-sidebar #content {
+        margin-right: 0px;
+    }
+
+    .has-personal-sidebar #content .pageSection {
+        margin-right: 0px;
+    }
+
+    .no-print, .no-print * {
+        display: none !important;
+    }
+}
+-->
+    </style>
+</head>
+<body>
+    <h1>Workflow Activity Configuration</h1>
+    <div class=3D"Section1">
+        <p>
+<style>[data-colorid=3Dk3ksllr9h4]{color:#333333} html[data-color-mode=3Dda=
+rk] [data-colorid=3Dk3ksllr9h4]{color:#cccccc}[data-colorid=3Dpv3uuvb24r]{c=
+olor:#333333} html[data-color-mode=3Ddark] [data-colorid=3Dpv3uuvb24r]{colo=
+r:#cccccc}</style><span class=3D"legacy-color-text-red2"><strong>Note:</str=
+ong> The information on this page has also been incorporated into the Selec=
+tSite Online Help, for access by JAGGAER employees and our Partners.</span>=
+<br><span class=3D"legacy-color-text-red2"> <strong>For consistency, edits =
+made to this page must also be made to the Help.</strong></span><br><span c=
+lass=3D"legacy-color-text-red2"> Therefore, if you edit this page in any wa=
+y, you <strong>must</strong> select the <strong>Notify watchers</strong> ch=
+eckbox at the bottom of the page before you click <strong>Save</strong>.</s=
+pan><br><span class=3D"legacy-color-text-red2"> Documentation will then rep=
+licate your edits in the Help.</span></p>
+<h1 id=3D"WorkflowActivityConfiguration-22">
+<style type=3D"text/css">/*<![CDATA[*/
+div.rbtoc1778147895119 {padding: 0px;}
+div.rbtoc1778147895119 ul {list-style: disc;margin-left: 0px;}
+div.rbtoc1778147895119 li {margin-left: 0px;padding-left: 0px;}
+
+/*]]>*/</style>
+<div class=3D"toc-macro rbtoc1778147895119">
+<ul class=3D"toc-indentation">
+<li><a href=3D"#WorkflowActivityConfiguration-ActivityTypes">Activity Types=
+</a></li>
+<li><a href=3D"#WorkflowActivityConfiguration-ActivityEntryRules">Activity =
+Entry Rules</a></li>
+<li><a href=3D"#WorkflowActivityConfiguration-FolderSelectionRules">Folder =
+Selection Rules</a></li>
+<li><a href=3D"#WorkflowActivityConfiguration-Flags">Flags</a></li>
+<li><a href=3D"#WorkflowActivityConfiguration-Attributes">Attributes</a></l=
+i>
+<li><a href=3D"#WorkflowActivityConfiguration-Examples">Examples</a></li>
+</ul>
+</div></h1>
+<h2 id=3D"WorkflowActivityConfiguration-ActivityTypes">Activity Types</h2>
+<p>Activity type determines application behavior when the document enters t=
+he activity. There are currently 6 different types of workflow activities. =
+They are defined in WorkflowActivityType class.</p>
+<h3 id=3D"WorkflowActivityConfiguration-manual">manual</h3>
+<p>This is a manual activity, i.e. a human has to approve the document befo=
+re it can move to the next activity.</p>
+<h3 id=3D"WorkflowActivityConfiguration-automated">automated</h3>
+<p>This is an automated activity (e.g. PO distribution). The target folder =
+must be an automated folder associated with a workflow robot. Robots are us=
+ed within workflow to automatically do something with workflow so that a us=
+er doesn't have to manually do the action. For example the auto reject robo=
+t will do just as it is named and automatically reject an entire PR that me=
+ets the criteria for that step to be triggered. Or Create PO this automatic=
+ally creates a PO behind the scenes which is required if the site is using =
+Order manager.</p>
+<p>There is one automated step that is required for all PO workflow configu=
+rations. This is the Revise PO step. You must have a revise PO step otherwi=
+se the POs will fail as it continues on down the workflow that is set up.</=
+p>
+<h3 id=3D"WorkflowActivityConfiguration-notification">notification</h3>
+<p>This is a notification activity, i.e. the document does not stop in the =
+target folder but instead a notification entry is created in the personal f=
+older of every approver that has access to the target folder(s). Notificati=
+ons are normally used around the EH&amp;S</p>
+<p>workflow. Most of the time the EH&amp;S doesn't need to approve a purcha=
+se they just need to know a purchase is taking place so that they can plan =
+for the receiving of it. There for a notification activity is set up so tha=
+t it doesn't hold up the PR.</p>
+<h3 id=3D"WorkflowActivityConfiguration-dummy">dummy</h3>
+<p>This type of activity is a way to connect several different activities t=
+ogether without having to connect each one of them to each other. This will=
+ help cut down on the number of relationships you have to have for the work=
+flow.</p>
+<p>Syntax: &lt;Activity name=3D"dummy"&gt;<br>
+&lt;ActivityType&gt;dummy&lt;/ActivityType&gt;<br>
+&lt;Rule&gt;&lt;![CDATA[ true ]]&gt;&lt;/Rule&gt;<br>
+&lt;/Activity&gt;</p>
+<h3 id=3D"WorkflowActivityConfiguration-start">start</h3>
+<p>&nbsp;Start workflow.</p>
+<h3 id=3D"WorkflowActivityConfiguration-end">end</h3>
+<p>End workflow.&nbsp;</p>
+<h2 id=3D"WorkflowActivityConfiguration-ActivityEntryRules"><span class=3D"=
+legacy-color-text-blue4">Activity Entry Rules</span></h2>
+<p>Activity entry rule determines whether the document is going to enter th=
+is activity or skip it. See <a class=3D"external-link" href=3D"http://daffy=
+.sciquest.com/tutorials/rules/tutorial/table-of-contents.htm" rel=3D"nofoll=
+ow">Workflow Rule Language Tutorial</a> for the rule language details.</p>
+<h2 id=3D"WorkflowActivityConfiguration-FolderSelectionRules"><span class=
+=3D"legacy-color-text-blue4">Folder Selection Rules</span></h2>
+<p>Folder selection rules are used to dynamically route a document to a fol=
+der based on the document contents. The folder selection rule is triggered =
+when the document enters the activity. If the folder selection rule comes b=
+ack with an empty set of folders, this activity instance is put into an err=
+or state. If you encounter an error of this type it take a look at your act=
+ivity to make sure that it is referencing a folder that exists or a dynamic=
+ workflow folder.</p>
+<h3 id=3D"WorkflowActivityConfiguration-ExplicitFolder">ExplicitFolder</h3>
+<p>The document is routed to the shared folder associated with the activity=
+. Shared folder name must be provided in the &lt;FolderRef&gt; element. If =
+a shared folder is used in the workflow it must be set up before the workfl=
+ow can be imported into a site.</p>
+<h3 id=3D"WorkflowActivityConfiguration-Department">Department</h3>
+<p>Dynamic shared folder is determined based on the department this documen=
+t belongs to. The requisition will be sent to a folder with the name of the=
+ department that is assigned on the requisition. This type of workflow acti=
+vity is triggered if the department has an approver attached to it.</p>
+<h3 id=3D"WorkflowActivityConfiguration-CustomFieldValue">CustomFieldValue<=
+/h3>
+<p>Custom field internal name must be provided in the wfFolderRuleCustomFie=
+ldName attribute. Dynamic shared folders are determined based on the values=
+ of this custom field. If there are multiple values in the document, the do=
+cument may be routed to multiple folders. If the custom field value on the =
+requisition has an approver "attached" to it then the workflow activity wil=
+l be triggered and the requisition will be placed in a folder that is dynam=
+ically named with the custom field name and the custom field value.</p>
+<h3 id=3D"WorkflowActivityConfiguration-FormType">FormType</h3>
+<p>Dynamic shared folders are determined based on the form types in the doc=
+ument. If there are multiple form types, the document may be routed to mult=
+iple folders. If the Form type has an approver attached to it then the requ=
+isition will be sent to a dynamic folder named with the form type name.</p>
+<h3 id=3D"WorkflowActivityConfiguration-CommodityCode">CommodityCode</h3>
+<p>Dynamic shared folders are determined based on the commodity codes in th=
+e document. If there are multiple commodity codes, the document may be rout=
+ed to multiple folders. this functionality can only be used when the site i=
+s using the commodity code mapping functionality. If the commodity code in =
+the mapping list has an approver assigned to it then the requisition will s=
+top in a folder with the commodity code as the name.</p>
+<h3 id=3D"WorkflowActivityConfiguration-UserSelectedApprover">UserSelectedA=
+pprover</h3>
+<p>This rule is applicable to Requisition only. Requisition will be routed =
+to the personal folder of the approver selected at the time of checkout (or=
+ the default approver for the owner of the requisition). Typically, this fo=
+lder selection rule goes together with an activity entry rule based on spen=
+ding limits.</p>
+<h3 id=3D"WorkflowActivityConfiguration-InvoiceOwner">InvoiceOwner</h3>
+<p>This rule is only applicable to the Invoice. It assigns the invoice owne=
+r as the approver of the invoice.</p>
+<p>&nbsp; &nbsp; &lt;FolderSelectionRule&gt;InvoiceOwner&lt;/FolderSelectio=
+nRule&gt;</p>
+<h3 id=3D"WorkflowActivityConfiguration-ChangeRequestPOOwner">ChangeRequest=
+POOwner</h3>
+<p>This rule applies to Supplier &amp; Customer Change Requests (updated in=
+ <a href=3D"https://jira-jaggaer.atlassian.net/wiki/display/DEV/21.3+eProcu=
+rement+Internal+Release+Notes#id-21.3eProcurementInternalReleaseNotes-Updat=
+eToTheChangeRequestFolderSelectionRuleChangeRequestPOOwner" rel=3D"nofollow=
+">maintenance release 20210819</a>). It assigns the change request to the P=
+O owner for approval.</p>
+<div class=3D"code panel pdl" style=3D"border-width: 1px;">
+<div class=3D"codeContent panelContent pdl">
+<pre class=3D"syntaxhighlighter-pre" data-syntaxhighlighter-params=3D"brush=
+: xml; gutter: false; theme: Confluence" data-theme=3D"Confluence">&lt;Acti=
+vity name=3D"Supplier Change Request"&gt;
+   &lt;ActivityType&gt;manual&lt;/ActivityType&gt;=20
+   &lt;StepRef name=3D"Supplier Change Request" /&gt;=20
+   &lt;Rule&gt;&lt;![CDATA[true]]&gt;&lt;/Rule&gt;
+   &lt;FolderSelectionRule&gt;ChangeRequestPOOwner&lt;/FolderSelectionRule&=
+gt;
+   &lt;Attribute name=3D"wfSkipStepIfNoApprovers"&gt;=20
+      &lt;AttrValue lang=3D"default"&gt;true&lt;/AttrValue&gt;=20
+   &lt;/Attribute&gt;=20
+&lt;/Activity&gt;</pre>
+</div>
+</div>
+<h3 id=3D"WorkflowActivityConfiguration-PreparedFor">PreparedFor</h3>
+<p>This applies to Requisitions and Change Requests. It provides the abilit=
+y for the workflow activity to auto-route to the "Prepared For" user for re=
+view/approval.</p>
+<p>See: <a href=3D"https://jira-jaggaer.atlassian.net/wiki/spaces/DEV/pages=
+/74966297/23.1+ePro+Inventory+Budget+Manager+Internal+Release+Notes" data-l=
+inked-resource-id=3D"74966297" data-linked-resource-version=3D"77" data-lin=
+ked-resource-type=3D"page">23.1 ePro/Inventory/Budget Manager Internal Rele=
+ase Notes</a> for additional information</p>
+<div class=3D"code panel pdl" style=3D"border-width: 1px;">
+<div class=3D"codeContent panelContent pdl">
+<pre class=3D"syntaxhighlighter-pre" data-syntaxhighlighter-params=3D"brush=
+: xml; gutter: false; theme: Confluence" data-theme=3D"Confluence">&lt;Acti=
+vity name=3D"Prepared For User Review"&gt;
+   &lt;ActivityType&gt;manual&lt;/ActivityType&gt;=20
+   &lt;StepRef name=3D"Prepared For User Review" /&gt;=20
+   &lt;Rule&gt;&lt;![CDATA[Owner.UserName !=3D Submitter.UserName]]&gt;&lt;=
+/Rule&gt;
+   &lt;FolderSelectionRule&gt;PreparedFor&lt;/FolderSelectionRule&gt;
+   &lt;Attribute name=3D"wfSkipStepIfNoApprovers"&gt;=20
+      &lt;AttrValue lang=3D"default"&gt;true&lt;/AttrValue&gt;=20
+   &lt;/Attribute&gt;=20
+&lt;/Activity&gt;</pre>
+</div>
+</div>
+<h3 id=3D"WorkflowActivityConfiguration-ReceiptPurchaseOrderOwner">ReceiptP=
+urchaseOrderOwner</h3>
+<p>This applies to Receipts (submitted by supplier or buyer user). It provi=
+des the ability for the workflow activity to auto-route to the PO Owner on =
+the PO related to the receipt for review/approval.</p>
+<p>See: <a href=3D"https://jira-jaggaer.atlassian.net/wiki/spaces/DEV/pages=
+/74984167/24.2+AP+Internal+Release+Notes" data-linked-resource-id=3D"749841=
+67" data-linked-resource-version=3D"20" data-linked-resource-type=3D"page">=
+24.2 AP Internal Release Notes</a> for additional information.</p>
+<div class=3D"code panel pdl" style=3D"border-width: 1px;">
+<div class=3D"codeContent panelContent pdl">
+<pre class=3D"syntaxhighlighter-pre" data-syntaxhighlighter-params=3D"brush=
+: xml; gutter: false; theme: Confluence" data-theme=3D"Confluence">   &lt;A=
+ctivity name=3D"PO Owner"&gt;
+    &lt;ActivityType&gt;manual&lt;/ActivityType&gt;
+    &lt;StepRef name=3D"PO Owner" /&gt;
+    &lt;FolderRef name=3D"PO Owner" /&gt;
+    &lt;Rule&gt;&lt;![CDATA[true]]&gt;&lt;/Rule&gt;
+    &lt;FolderSelectionRule&gt;ReceiptPurchaseOrderOwner&lt;/FolderSelectio=
+nRule&gt;
+  &lt;/Activity&gt;</pre>
+</div>
+</div>
+<h3 id=3D"WorkflowActivityConfiguration-ContractTypeDynamicApproval">Contra=
+ctTypeDynamicApproval</h3>
+<p>description goes here</p>
+<h3 id=3D"WorkflowActivityConfiguration-SourcingEventAwardFinalizedBy">Sour=
+cingEventAwardFinalizedBy</h3>
+<p>This refers to the user who last finalized a sourcing event award.&nbsp;=
+ This folder selection rule is only available to Sourcing Post Bid Evaluati=
+on.&nbsp; This rule is meant to be used to for the "Return to Evaluator"&nb=
+sp; workflow action along with the flag HasEvaluationBeenReturned.</p>
+<div class=3D"code panel pdl" style=3D"border-width: 1px;">
+<div class=3D"codeContent panelContent pdl">
+<pre class=3D"syntaxhighlighter-pre" data-syntaxhighlighter-params=3D"brush=
+: xml; gutter: false; theme: Confluence" data-theme=3D"Confluence"> &lt;Act=
+ivity name=3D"Returned To Evaluator"&gt;
+    &lt;ActivityType&gt;manual&lt;/ActivityType&gt;
+    &lt;StepRef name=3D"Returned To Evaluator" /&gt;
+    &lt;Rule&gt;&lt;![CDATA[Document.HasEvaluationBeenReturned=3Dtrue]]&gt;=
+&lt;/Rule&gt;
+    &lt;FolderSelectionRule&gt;SourcingEventAwardFinalizedBy&lt;/FolderSele=
+ctionRule&gt;
+  &lt;/Activity&gt;</pre>
+</div>
+</div>
+<h3 id=3D"WorkflowActivityConfiguration-FulfillmentCenter">FulfillmentCente=
+r</h3>
+<p>description goes here</p>
+<div class=3D"panel" style=3D"border-width: 1px;">
+<div class=3D"panelContent">
+<h3 id=3D"WorkflowActivityConfiguration-MultiElementDynamic">MultiElementDy=
+namic</h3>
+<p>This refers to the Advanced Dynamic Workflow groups and their associated=
+ rules. The workflow engine will look at the rule group mentioned in the ru=
+le definition and in the attribute definition. Then the workflow engine wil=
+l look at the rules associated to the rule group and route the invoice to t=
+he approvers on each rule if the logic evaluates to true.</p>
+<p>Here is an example of an activity using the MultiElementDynamic folder s=
+election. Notice that it is used in combination with a rule defined with Do=
+cument.RequiresRuleGroupEvaluation and that this rule needs you to put the =
+rule group internal name, NOT the display name, into the syntax. The evalua=
+tion is very simple when all the necessary logic is encompassed in the rule=
+s of the rule group. Setting the rule to "=3D=3D true" is looking at all ac=
+tive rules with approvers. The question "Do the rules associated to this ru=
+le group require evaluation" is answered with true when the rules are activ=
+e and also have approvers. Each associated rule that is active with approve=
+rs will be evaluated. If the logic of the individual ADW rules evaluates to=
+ true, then the workflow engine will route the invoice into dynamically gen=
+erated folders that appear for the valid approvers.</p>
+<p>ADW rules that do not have an approver are not evaluated. ADW rules that=
+ are inactive are not evaluated.</p>
+<p><strong>Please See Example Activity Below:</strong></p>
+<div class=3D"code panel pdl" style=3D"border-width: 1px;">
+<div class=3D"codeContent panelContent pdl">
+<pre class=3D"syntaxhighlighter-pre" data-syntaxhighlighter-params=3D"brush=
+: xml; gutter: false; theme: Confluence" data-theme=3D"Confluence">&lt;Acti=
+vity name=3D"TypeActivityNameHere"&gt;
+ &lt;ActivityType&gt;manual&lt;/ActivityType&gt;
+ &lt;StepRef name=3D"TypeRelatedStepNameHere" /&gt;
+ &lt;Rule&gt;&lt;![CDATA[Document.RequiresRuleGroupEvaluation("RuleGroupInt=
+ernalNameGoesHere") =3D=3D true]]&gt;&lt;/Rule&gt;
+ &lt;FolderSelectionRule&gt;MultiElementDynamic&lt;/FolderSelectionRule&gt;
+ &lt;Attribute name=3D"RuleGroupInternalName"&gt;
+ &lt;AttrValue lang=3D"default"&gt;RuleGroupInternalNameGoesHere&lt;/AttrVa=
+lue&gt;
+ &lt;/Attribute&gt;
+ &lt;/Activity&gt;</pre>
+</div>
+</div>
+</div>
+</div>
+<div class=3D"panel" style=3D"border-width: 1px;">
+<div class=3D"panelContent">
+<h3 id=3D"WorkflowActivityConfiguration-MasterContractDocumentApprover(Avai=
+lableininvoiceworkflow)">MasterContractDocumentApprover (Available in invoi=
+ce workflow)</h3>
+<p>In the 16.3 release, the concept of an Invoice Approvers access group wa=
+s added to the contracts on the "Users and Contacts" page. The MasterContra=
+ctDocumentApprover folder selection type will look at the Invoice Approvers=
+ access group and then provide those users the ability to approve invoices =
+that route into the step/activity. The users in the Invoice Approvers acces=
+s group will be able to see invoices in a shared workflow folder(not a thei=
+r personal My Approvals folder). For more information read this page: <a hr=
+ef=3D"https://jira-jaggaer.atlassian.net/wiki/spaces/DEV/pages/74869334/Con=
+tract+Invoice+Approvers" data-linked-resource-id=3D"74869334" data-linked-r=
+esource-version=3D"18" data-linked-resource-type=3D"page">Contract Invoice =
+Approvers</a>.</p>
+<p>The most common expected use of this folder selection type will be to co=
+mbine it with an ADW rule group and a set of rules associated to that ADW g=
+roup. Most likely, the ADW rules will contain rule elements for Contracts l=
+ike Has Contracts, Contract Invoice Approvers, or Contract Type.</p>
+<p><a class=3D"external-link" href=3D"http://jira-jaggaer.atlassian.net/wik=
+i/display/DEV/Invoice+Workflow+Folder+Selection+Types" rel=3D"nofollow">Mor=
+e Information on Invoice Workflow</a></p>
+<p>Here is an example of combining the ADW rule group with MasterContractDo=
+cumentApprover folder selection.</p>
+<div class=3D"code panel pdl" style=3D"border-width: 1px;">
+<div class=3D"codeContent panelContent pdl">
+<pre class=3D"syntaxhighlighter-pre" data-syntaxhighlighter-params=3D"brush=
+: xml; gutter: false; theme: Confluence" data-theme=3D"Confluence">&lt;Acti=
+vity name=3D"TypeActivityNameHere"&gt;
+ &lt;ActivityType&gt;manual&lt;/ActivityType&gt;
+ &lt;StepRef name=3D"TypeRelatedStepNameHere" /&gt;
+ &lt;Rule&gt;&lt;![CDATA[Document.RequiresRuleGroupEvaluation("RuleGroupInt=
+ernalNameGoesHere") =3D=3D true]]&gt;&lt;/Rule&gt;
+ &lt;FolderSelectionRule&gt;MasterContractDocumentApprover&lt;/FolderSelect=
+ionRule&gt;
+ &lt;Attribute name=3D"RuleGroupInternalName"&gt;
+ &lt;AttrValue lang=3D"default"&gt;RuleGroupInternalNameGoesHere&lt;/AttrVa=
+lue&gt;
+ &lt;/Attribute&gt;
+ &lt;/Activity&gt;</pre>
+</div>
+</div>
+<p>Remember that only active rules with at least one approver will be evalu=
+ated. The individual rules must have an approver even though the approver i=
+s considered a "dummy" approver. The dummy approver on the rule acts as a f=
+lag to the workflow engine that this rule needs to be evaluated. The "dummy=
+ approver" on the rule itself will not receive notifications nor will it se=
+e a folder for approving. Only the invoice approvers in the contract invoic=
+e approvers group will receive notifications/emails and see invoices in an =
+approvals folder for the step/activity</p>
+</div>
+</div>
+<h2 id=3D"WorkflowActivityConfiguration-Flags"><strong>Flags</strong></h2>
+<p><br></p>
+<div class=3D"table-wrap">
+<table class=3D"wrapped confluenceTable">
+<colgroup>
+<col>
+</colgroup>
+<tbody>
+<tr>
+<th colspan=3D"1" class=3D"confluenceTh"><strong>Formatting Example</strong=
+></th>
+</tr>
+<tr>
+<th class=3D"confluenceTh">&lt;Activity name=3D"Legal Approval"&gt;<br>
+&lt;ActivityType&gt;manual&lt;/ActivityType&gt;<br>
+&lt;StepRef name=3D"Legal Approval" /&gt;<br>
+&lt;Rule&gt;&lt;![CDATA[Document.RequiresRuleGroupEvaluation("Legal Approva=
+l") =3D=3D true]]&gt;&lt;/Rule&gt;<br>
+&lt;FolderSelectionRule&gt;MultiElementDynamic&lt;/FolderSelectionRule&gt;<=
+br>
+&lt;Flag&gt;ContractEditable&lt;/Flag&gt; <br>
+&lt;Attribute name=3D"RuleGroupInternalName"&gt;<br>
+&lt;AttrValue lang=3D"default"&gt;Legal Approval&lt;/AttrValue&gt;<br>
+&lt;/Attribute&gt;<br>
+&lt;/Activity&gt;</th>
+</tr>
+</tbody>
+</table>
+</div>
+<h3 id=3D"WorkflowActivityConfiguration-NoBypass">NoBypass</h3>
+<p>Indicates that this activity can't be bypassed by using expedite or skip=
+ functionality.</p>
+<h3 id=3D"WorkflowActivityConfiguration-ContractEditable"><span data-colori=
+d=3D"k3ksllr9h4">ContractEditable</span></h3>
+<p><span data-colorid=3D"pv3uuvb24r">When a step in Contract Approval Workf=
+low has been added the flagged as 'ContractEditable', the approver assigned=
+ to the approval step should be able to Check out the contract, make edits,=
+ and Approve the contract while the contract has the editable step as the a=
+ctive workflow step.</span></p>
+<h3 id=3D"WorkflowActivityConfiguration-FinancialApproval">FinancialApprova=
+l</h3>
+<p>Indicates that when the document is approved, it moves to the next activ=
+ity only if the document is within the approval limits of the person that a=
+pproved it. The approval limits are set up in the approvers profile. If not=
+, it is forwarded to the next approver (either default or explicitly select=
+ed) while staying in the same activity. The cycle continues until it reache=
+s someone with approval limits greater than the document/line total. Use&nb=
+sp;<span class=3D"legacy-color-text-default">UserSelectedApprover as Folder=
+SelectionRule for Financial workflow.</span></p>
+<h3 id=3D"WorkflowActivityConfiguration-OrderConsolidation">OrderConsolidat=
+ion</h3>
+<p>Indicates that order consolidation is allowed when the document is in th=
+is activity. An activity should only be an order consolidation step if it i=
+s the last step in the workflow. Once an order has been consolidated it no =
+longer routes through workflow and immediately become a PO. Consolidation i=
+s normally used to allow purchasing to gather all requisitions from one sup=
+plier and consolidate them to one PO.</p>
+<h3 id=3D"WorkflowActivityConfiguration-AllowResendToSupplier">AllowResendT=
+oSupplier</h3>
+<p>PO workflow only. Indicates that the PO can be resent to supplier when i=
+t is in this activity. Normally, resends are allowed only after PO workflow=
+ is complete.</p>
+<h3 id=3D"WorkflowActivityConfiguration-AllowCreateSourcingEvent">AllowCrea=
+teSourcingEvent</h3>
+<p>The ability to create a new sourcing event shall be restricted by specif=
+ying this flag. Only if this flag is mentioned in the activity configuratio=
+n, the user would be able to create a new sourcing event from his personal =
+folder.</p>
+<h3 id=3D"WorkflowActivityConfiguration-WarnOnApprove">WarnOnApprove</h3>
+<p>There is a new popup warning message that can be used to remind approver=
+s that approving an invoice from the invoice approvals screen does not perf=
+orm any matching actions.&nbsp;</p>
+<h3 id=3D"WorkflowActivityConfiguration-HideMatchActionOnApproveComplete">H=
+ideMatchActionOnApproveComplete</h3>
+<p>When an activity contains this flag, the "Approve/Complete" option will =
+appear in place of the "Approve &amp; Complete and Match" option.</p>
+<h3 id=3D"WorkflowActivityConfiguration-PRValidation">PRValidation</h3>
+<p>Marks an activity a PR validation activity. It should be an automated ac=
+tivity associated with PRValidationRobotAsynchronous robot.</p>
+<div class=3D"confluence-information-macro confluence-information-macro-war=
+ning">
+<span class=3D"aui-icon aui-icon-small aui-iconfont-error confluence-inform=
+ation-macro-icon"></span>
+<div class=3D"confluence-information-macro-body">
+<p>The PRValidation flag is not yet implemented and setting it will cause t=
+he activity to fail. See <span class=3D"confluence-jim-macro jira-issue" da=
+ta-jira-key=3D"SS-46042" data-client-id=3D"SINGLE_5ca988cb-678a-3ab4-a58d-6=
+a00aaa83be6_74744519_712020:d15b989e-b57b-41f2-9dc5-ee735146e305"> <a href=
+=3D"https://jira-jaggaer.atlassian.net/browse/SS-46042" class=3D"jira-issue=
+-key"><span class=3D"aui-icon aui-icon-wait issue-placeholder"></span>SS-46=
+042</a> - <span class=3D"summary">Getting issue details...</span> <span cla=
+ss=3D"aui-lozenge aui-lozenge-subtle aui-lozenge-default issue-placeholder"=
+>STATUS</span> </span> for request to have the warning about this flag remo=
+ved from workflow configuration.</p>
+</div>
+</div>
+<h3 id=3D"WorkflowActivityConfiguration-POValidation"><span>POValidation</s=
+pan></h3>
+<p><span>Required on an activity if configuring single step asynchronous PO=
+ validation. PO workflow only. (See&nbsp;<a class=3D"external-link" href=3D=
+"http://jira-jaggaer.atlassian.net/wiki/display/DEV/18.3+eProcurement+Inter=
+nal+Release+Notes#id-18.3eProcurementInternalReleaseNotes-AsynchronousPOVal=
+idationIntegrationGreenInProgress" rel=3D"nofollow">ePro's 18.3 Internal Re=
+lease Notes</a>&nbsp;for details).</span></p>
+<p><span><strong><br></strong></span></p>
+<p><span><strong>WaitAndReceiveSCTResponse</strong></span></p>
+<p><span>Can be used with any Banner&nbsp;Asynchronous workflow step (SCTPR=
+CreateRobot,&nbsp;SCTPOCreateRobot,&nbsp;SCTPOUpdateRobot) to prevent Banne=
+r messaging timing issues. See&nbsp;<a href=3D"https://jira-jaggaer.atlassi=
+an.net/wiki/spaces/DEV/pages/74925689/20.3+eProcurement+Internal+Release+No=
+tes#id-20.3eProcurementInternalReleaseNotes-20.3eProcurementInternalRelease=
+Notes-BannerAsynchronousIntegrationImprovement" data-linked-resource-id=3D"=
+74925689" data-linked-resource-version=3D"29" data-linked-resource-type=3D"=
+page">20.3 eProcurement Internal Release Notes</a></span></p>
+<h3 id=3D"WorkflowActivityConfiguration-AutoApproveInvoiceIfMatched"><span>=
+AutoApproveInvoiceIfMatched</span></h3>
+<p>Allows invoices in a shared approval folder to be approved automatically=
+ when&nbsp;<span>their status changes from Unmatched to Matched. &nbsp;Will=
+ not auto-approve when already assigned to an approver. &nbsp;<span>See the=
+ 12.3 </span><a class=3D"external-link" href=3D"http://confluence/display/D=
+EV/12.2+-+AP+Internal+Release+notes" rel=3D"nofollow">release notes</a><spa=
+n>&nbsp;for more information. Used by Yeshiva &amp; UNebraska.</span></span=
+></p>
+<p><strong style=3D"font-size: 16.0px;" class=3D"legacy-color-text-default"=
+><br>
+MFA Flag</strong></p>
+<p>Requires an MFA on certain approval steps. Released in 19.1 for PR appro=
+vals only, for now. See <a class=3D"external-link" href=3D"http://jira-jagg=
+aer.atlassian.net/wiki/display/DEV/19.1+eProcurement+Internal+Release+Notes=
+#id-19.1eProcurementInternalReleaseNotes-MultiFactorAuthentication(MFA)ForR=
+equisitionApprovals" rel=3D"nofollow">19.1 Internal Release Notes</a> for d=
+etails.</p>
+<p><span><span>&lt;Flag&gt;MFARequired&lt;/Flag&gt;</span></span></p>
+<h3 id=3D"WorkflowActivityConfiguration-RevertActionNotAvailableFromStep">R=
+evertActionNotAvailableFromStep</h3>
+<p>Indicates that a step can not be Reverted from. The Revert workflow acti=
+on will not show.</p>
+<h3 id=3D"WorkflowActivityConfiguration-RevertActionNotAvailableToStep">Rev=
+ertActionNotAvailableToStep</h3>
+<p>Indicates that a step can not be Reverted to. The Select option within t=
+he Revert action pop up will no longer show.</p>
+<h2 id=3D"WorkflowActivityConfiguration-Attributes">Attributes</h2>
+<h3 id=3D"WorkflowActivityConfiguration-wfActivityHelp">wfActivityHelp</h3>
+<p>Help text for this activity. Can be provided for multiple languages.</p>
+<h3 id=3D"WorkflowActivityConfiguration-wfActivitySupportNote">wfActivitySu=
+pportNote</h3>
+<p>Internal comments (700 char max).</p>
+<p><em>First available in release 9.3</em></p>
+<h3 id=3D"WorkflowActivityConfiguration-wfFolderRuleCustomFieldName">wfFold=
+erRuleCustomFieldName</h3>
+<p>Internal name of the custom field for dynamic folder routing. Used in co=
+njuction with the CustomFieldValue folder selection rule.</p>
+<p>Default language only.</p>
+<h3 id=3D"WorkflowActivityConfiguration-wfActivityValidationType">wfActivit=
+yValidationType</h3>
+<p>Used by document validation to determine validation rules for each docum=
+ent element. Validation types are configured via the list management interf=
+ace. There is a link to it from the document configuration. The value here =
+is the internal name of the list value created through the interface. if no=
+ validation type is associated with the activity, predefined "Default" vali=
+dation type is used.</p>
+<p>Default language only.</p>
+<p><em>First available in release 5.3</em></p>
+<h3 id=3D"WorkflowActivityConfiguration-wfDocExportSchedule">wfDocExportSch=
+edule</h3>
+<p>For batch PO export, this specifies the schedule (which in turn stipulat=
+es the destination) for the export. The string to be provided is the org's =
+internal name for the schedule. If multiple instances of this attribute are=
+ included, the document will be added to each schedule. See the <a class=3D=
+"external-link" href=3D"http://wiki/index.php/Development:5.4_Release_Notes=
+_-_Multiple_PO_Exports" rel=3D"nofollow">release notes</a> for more informa=
+tion.</p>
+<p>Default language only.</p>
+<p><em>First available in release 5.4</em></p>
+<h3 id=3D"WorkflowActivityConfiguration-wfDocExportDestination">wfDocExport=
+Destination</h3>
+<p>For immediate PO export, this specifies the destination for the export. =
+The string to be provided is the org's internal name for the destination. I=
+f multiple instances of this attribute are included, the document will be s=
+ent to each destination in turn. See the <a class=3D"external-link" href=3D=
+"http://wiki/index.php/Development:5.4_Release_Notes_-_Multiple_PO_Exports"=
+ rel=3D"nofollow">release notes</a> for more information.</p>
+<p>Default language only.</p>
+<p><em>First available in release 5.4</em></p>
+<h3 id=3D"WorkflowActivityConfiguration-wfAIApproval">wfAIApproval</h3>
+<p><span class=3D"legacy-color-text-blue3">Used with AI/ML Approvals to ind=
+icate any step/activity that applies AI assistance for approvals. See the 2=
+5.1 <a href=3D"https://jira-jaggaer.atlassian.net/wiki/spaces/DEV/pages/299=
+728929/25.1+AP+Internal+Release+Notes" data-linked-resource-id=3D"299728929=
+" data-linked-resource-version=3D"20" data-linked-resource-type=3D"page">AP=
+ Internal Release Notes</a> </span><span class=3D"legacy-color-text-blue3">=
+for more information.&nbsp;</span></p>
+<p><span class=3D"legacy-color-text-blue3">For use with Requisition Workflo=
+w and Invoice Workflow 25.1.</span></p>
+<p><span class=3D"legacy-color-text-blue3">For use with Manual activities/s=
+teps only. If attribute is added to an automated activity/step, it will be =
+ignored.</span></p>
+<p><span class=3D"legacy-color-text-blue3">Default language only.</span></p=
+>
+<p><span class=3D"legacy-color-text-blue3"><em>First available in release 2=
+4.2</em></span></p>
+<h3 id=3D"WorkflowActivityConfiguration-wfApprovalRestriction">wfApprovalRe=
+striction</h3>
+<p><span class=3D"legacy-color-text-blue3"><span class=3D"legacy-color-text=
+-default">For Invoice workflow on the Matching Exception step, this attribu=
+te works with the Matching/Tolerance rule setting, Enable Approval Restrict=
+ion to prevent invoices from being approved when the rule triggers as true.=
+ S</span>ee the <a href=3D"https://jira-jaggaer.atlassian.net/wiki/spaces/D=
+EV/pages/493355406/25.2+AP+Internal+Release+Notes" data-linked-resource-id=
+=3D"493355406" data-linked-resource-version=3D"21" data-linked-resource-typ=
+e=3D"page">25.2 AP Internal Release Notes</a> </span><span class=3D"legacy-=
+color-text-blue3">for more information.&nbsp;</span></p>
+<p><span class=3D"legacy-color-text-blue3">For use with Manual activities/s=
+teps only. If attribute is added to an automated activity/step, it will be =
+ignored.</span></p>
+<p><span class=3D"legacy-color-text-blue3">Default language only.</span></p=
+>
+<p><span class=3D"legacy-color-text-blue3"><em>First available in release 2=
+5.2</em></span></p>
+<h3 id=3D"WorkflowActivityConfiguration-Robot-specificattributes">Robot-spe=
+cific attributes</h3>
+<p>are documented <a class=3D"external-link" href=3D"http://confluence/x/nw=
+Vz" rel=3D"nofollow">here</a></p>
+<h3 id=3D"WorkflowActivityConfiguration-Syntax">Syntax</h3>
+<p>The text in each Activity is limited to 6,000 characters. If the text in=
+ an Activity you are writing is longer than 6,000 characters (for example, =
+when referencing a long list of CAS numbers), you will need to break the te=
+xt up into multiple Activities.</p>
+<h2 id=3D"WorkflowActivityConfiguration-Examples">Examples</h2>
+<p><em>tbd</em></p>
+    </div>
+</body>
+</html>
+------=_Part_44_1322624669.1778147895142--

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE WorkflowFolderMessage SYSTEM "https://usertest.sciquest.com/app_docs/dtd/workflow/WorkflowFolder.dtd">
+<WorkflowFolderMessage>
+   <Folder name="Create Inventory" folderType="automated">
+    <WorkflowType>receipt</WorkflowType>
+    <FolderRobot>CreateInventoryRobot</FolderRobot>
+  </Folder>
+</WorkflowFolderMessage>

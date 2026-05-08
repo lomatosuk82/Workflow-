@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE ProcessDefinition SYSTEM "https://usertest.sciquest.com/app_docs/dtd/workflow/WorkflowDefinition.dtd">
+<ProcessDefinition>
+  <WorkflowType>receipt</WorkflowType>
+  <Usable>true</Usable>
+  <Version>1</Version>
+  <VersionDescription>Adding Special Items Step</VersionDescription>
+  <!--====== Steps ======-->
+  <Step name="Cost Check">
+    <Attribute name="wfActivityHelp">
+      <AttrValue lang="default">This ADW step routes receipts to a Rule Group where rules can be set up to drive them to appropriate approvers based on amount and department, account code or other factors.</AttrValue>
+    </Attribute>
+  </Step>
+  <Step name="Special Items" />
+  <Step name="Create Inventory Receipts" />
+  <!--====== Activities ======-->
+  <Activity name="START">
+    <ActivityType>start</ActivityType>
+    <Rule />
+    <FolderSelectionRule>Dummy</FolderSelectionRule>
+  </Activity>
+  <Activity name="CostCheck">
+    <ActivityType>manual</ActivityType>
+    <StepRef name="Cost Check" />
+    <Rule><![CDATA[Document.RequiresRuleGroupEvaluation("Cost Based Approvals") == true]]></Rule>
+    <FolderSelectionRule>MultiElementDynamic</FolderSelectionRule>
+    <Attribute name="RuleGroupInternalName">
+      <AttrValue lang="default">Cost Based Approvals</AttrValue>
+    </Attribute>
+	<Attribute name="wfActivitySupportNote">
+      <AttrValue lang="default">If we have any background information for documentation purposes, we can put it within a SupportNote attribute like this. This is an ADW activity that checks a Rule Group to see whether a Receipt requires approval, and by whom. The client can create or manage rules and approvers for that Rule Group at any time, from the ADW tab.</AttrValue>
+    </Attribute>
+    <Attribute name="wfActivityHelp">
+      <AttrValue lang="default">This activity checks a Rule Group to see if a receipt requires approval based on cost-related factors, and if so who should approve it.</AttrValue>
+    </Attribute>
+  </Activity>
+  <Activity name="SpecialItems">
+    <ActivityType>manual</ActivityType>
+    <StepRef name="Special Items" />
+    <Rule><![CDATA[Document.RequiresRuleGroupEvaluation("Special Item Approvals") == true]]></Rule>
+    <FolderSelectionRule>MultiElementDynamic</FolderSelectionRule>
+    <Attribute name="RuleGroupInternalName">
+      <AttrValue lang="default">Special Item Approvals</AttrValue>
+    </Attribute>
+	<Attribute name="wfActivitySupportNote">
+      <AttrValue lang="default">This is an ADW activity that checks a Rule Group called Special Item Approvals to see whether a Receipt requires approval, and by whom. Rules here should be based at least partly on what items were purchased, for example Capital Expenses or IT or chemicals and reagents. The client can create or manage rules and approvers for that Rule Group at any time, from the ADW tab.</AttrValue>
+    </Attribute>
+    <Attribute name="wfActivityHelp">
+      <AttrValue lang="default">This ADW activity checks the Rule Group called Special Item Approvals to see whether a Receipt requires approval because of what was purchased, and by whom. </AttrValue>
+    </Attribute>
+  </Activity>
+  <Activity name="Create Inventory">
+    <ActivityType>automated</ActivityType>
+    <StepRef name="Create Inventory Receipts" />
+    <FolderRef name="Create Inventory" />
+    <Rule><![CDATA[true]]></Rule>
+    <FolderSelectionRule>ExplicitFolder</FolderSelectionRule>
+	<Attribute name="wfActivitySupportNote">
+      <AttrValue lang="default">This static activity prompts an automated system action. The rule says to ALWAYS send receipts to the internal explicit folder called Create Inventory, which runs a robot called CreateInventoryRobot. (We named the folder, specified the robot and uploaded that with the accompanying Receipt WF Folders file.) This robot is built to create inventory receipts for any quantity receipt lines that have the Add to Inventory field set to true. If none are, nothing would happen but the step would still be marked complete. Note: This particular activity would ONLY be appropriate for clients who are using the Inventory Management module.</AttrValue>
+    </Attribute>
+    <Attribute name="wfActivityHelp">
+      <AttrValue lang="default">This ADW activity prompts the system to create inventory items.</AttrValue>
+    </Attribute>
+  </Activity>
+  <Activity name="END">
+    <ActivityType>end</ActivityType>
+    <Rule />
+    <FolderSelectionRule>Dummy</FolderSelectionRule>
+  </Activity>
+  <!--====== Activity relationships ======-->
+  <ActivityRelationship previous="START" next="CostCheck" />
+  <ActivityRelationship previous="CostCheck" next="SpecialItems" />
+  <ActivityRelationship previous="SpecialItems" next="Create Inventory" />
+  <ActivityRelationship previous="Create Inventory" next="END" />
+</ProcessDefinition>

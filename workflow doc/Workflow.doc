@@ -1,0 +1,379 @@
+Date: Thu, 7 May 2026 09:57:56 +0000 (UTC)
+Message-ID: <1516743872.5.1778147876737@9383b079afea>
+Subject: Exported From Confluence
+MIME-Version: 1.0
+Content-Type: multipart/related; 
+	boundary="----=_Part_4_588982690.1778147876737"
+
+------=_Part_4_588982690.1778147876737
+Content-Type: text/html; charset=UTF-8
+Content-Transfer-Encoding: quoted-printable
+Content-Location: file:///C:/exported.html
+
+<html xmlns:o=3D'urn:schemas-microsoft-com:office:office'
+      xmlns:w=3D'urn:schemas-microsoft-com:office:word'
+      xmlns:v=3D'urn:schemas-microsoft-com:vml'
+      xmlns=3D'urn:w3-org-ns:HTML'>
+<head>
+    <meta http-equiv=3D"Content-Type" content=3D"text/html; charset=3Dutf-8=
+">
+    <title>Workflow</title>
+    <!--[if gte mso 9]>
+    <xml>
+        <o:OfficeDocumentSettings>
+            <o:TargetScreenSize>1024x640</o:TargetScreenSize>
+            <o:PixelsPerInch>72</o:PixelsPerInch>
+            <o:AllowPNG/>
+        </o:OfficeDocumentSettings>
+        <w:WordDocument>
+            <w:View>Print</w:View>
+            <w:Zoom>90</w:Zoom>
+            <w:DoNotOptimizeForBrowser/>
+        </w:WordDocument>
+    </xml>
+    <![endif]-->
+    <style>
+                <!--
+        @page Section1 {
+            size: 8.5in 11.0in;
+            margin: 1.0in;
+            mso-header-margin: .5in;
+            mso-footer-margin: .5in;
+            mso-paper-source: 0;
+        }
+
+        table {
+            border: solid 1px;
+            border-collapse: collapse;
+        }
+
+        table td, table th {
+            border: solid 1px;
+            padding: 5px;
+        }
+
+        td {
+            page-break-inside: avoid;
+        }
+
+        tr {
+            page-break-after: avoid;
+        }
+
+        div.Section1 {
+            page: Section1;
+        }
+
+        /* Confluence print stylesheet. Common to all themes for print medi=
+a */
+/* Full of !important until we improve batching for print CSS */
+
+@media print {
+    #main {
+        padding-bottom: 1em !important; /* The default padding of 6em is to=
+o much for printouts */
+    }
+
+    body {
+        font: var(--ds-font-body-small, Arial, Helvetica, FreeSans, sans-se=
+rif);
+    }
+
+    body, #full-height-container, #main, #page, #content, .has-personal-sid=
+ebar #content {
+        background: var(--ds-surface, #fff) !important;
+        color: var(--ds-text, #000) !important;
+        border: 0 !important;
+        width: 100% !important;
+        height: auto !important;
+        min-height: auto !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        display: block !important;
+    }
+
+    a, a:link, a:visited, a:focus, a:hover, a:active {
+        color: var(--ds-text, #000);
+    }
+
+    #content h1,
+    #content h2,
+    #content h3,
+    #content h4,
+    #content h5,
+    #content h6 {
+        page-break-after: avoid;
+    }
+
+    pre {
+        font: var(--ds-font-code, Monaco, "Courier New", monospace);
+    }
+
+    #header,
+    .aui-header-inner,
+    #navigation,
+    #sidebar,
+    .sidebar,
+    #personal-info-sidebar,
+    .ia-fixed-sidebar,
+    .page-actions,
+    .navmenu,
+    .ajs-menu-bar,
+    .noprint,
+    .inline-control-link,
+    .inline-control-link a,
+    a.show-labels-editor,
+    .global-comment-actions,
+    .comment-actions,
+    .quick-comment-container,
+    #addcomment {
+        display: none !important;
+    }
+
+    /* CONF-28544 cannot print multiple pages in IE */
+    #splitter-content {
+        position: relative !important;
+    }
+
+    .comment .date::before {
+        content: none !important; /* remove middot for print view */
+    }
+
+    h1.pagetitle img {
+        height: auto;
+        width: auto;
+    }
+
+    .print-only {
+        display: block;
+    }
+
+    #footer {
+        position: relative !important; /* CONF-17506 Place the footer at en=
+d of the content */
+        margin: 0;
+        padding: 0;
+        background: none;
+        clear: both;
+    }
+
+    #poweredby {
+        border-top: none;
+        background: none;
+    }
+
+    #poweredby li.print-only {
+        display: list-item;
+        font-style: italic;
+    }
+
+    #poweredby li.noprint {
+        display: none;
+    }
+
+    /* no width controls in print */
+    .wiki-content .table-wrap,
+    .wiki-content p,
+    .panel .codeContent,
+    .panel .codeContent pre,
+    .image-wrap {
+        overflow: visible !important;
+    }
+
+    /* TODO - should this work? */
+    #children-section,
+    #comments-section .comment,
+    #comments-section .comment .comment-body,
+    #comments-section .comment .comment-content,
+    #comments-section .comment p {
+        page-break-inside: avoid;
+    }
+
+    #page-children a {
+        text-decoration: none;
+    }
+
+    /**
+     hide twixies
+
+     the specificity here is a hack because print styles
+     are getting loaded before the base styles. */
+    #comments-section.pageSection .section-header,
+    #comments-section.pageSection .section-title,
+    #children-section.pageSection .section-header,
+    #children-section.pageSection .section-title,
+    .children-show-hide {
+        padding-left: 0;
+        margin-left: 0;
+    }
+
+    .children-show-hide.icon {
+        display: none;
+    }
+
+    /* personal sidebar */
+    .has-personal-sidebar #content {
+        margin-right: 0px;
+    }
+
+    .has-personal-sidebar #content .pageSection {
+        margin-right: 0px;
+    }
+
+    .no-print, .no-print * {
+        display: none !important;
+    }
+}
+-->
+    </style>
+</head>
+<body>
+    <h1>Workflow</h1>
+    <div class=3D"Section1">
+        <h1 id=3D"Workflow-WorkflowFramework">Workflow Framework</h1>
+<p><a class=3D"external-link" href=3D"http://wiki/index.php/Image:WorkflowT=
+ables.png" rel=3D"nofollow">http://wiki/index.php/Image:WorkflowTables.png<=
+/a><br>
+ The workflow ERD shows the basic relationships among tables supporting wor=
+kflow.<br>
+ Requisitions and purchase orders move through workflow to get their approp=
+riate approvals and get distributed as needed. Workflow configuration is pe=
+rformed by uploading a set of folders (some of which may be processed by ro=
+bots) and a specification of the relationships among steps, activities, and=
+ folders.</p>
+<p>Alexey made an introduction video here:&nbsp;\\Scifile\Departments\Devel=
+opment\Training\Workflow (Workflow.mpg) which goes through an example workf=
+low and describes relationships among the various objects. Other files in t=
+hat folder may also be helpful in understanding workflow.</p>
+<p>The DTD for workflow configuration (http://cvs.sciquest.com/viewcvs/view=
+cvs.cgi/*checkout*/applications/docs/dtd/workflow/WorkflowDefinition.dtd) m=
+ay help clarify some issues about exactly what goes in a workflow definitio=
+n file.</p>
+<p>Workflow changes in 9.3 are documented <a class=3D"external-link" href=
+=3D"http://wiki/images/c/c3/Workflow_Improvements_9.3.pptx" rel=3D"nofollow=
+">here (ppt)</a></p>
+<div class=3D"table-wrap">
+<table class=3D"confluenceTable">
+<tbody>
+<tr>
+<td class=3D"confluenceTd">
+<h2 id=3D"Workflow-Contents[hide]">Contents[<a class=3D"unresolved" href=3D=
+"#">hide</a>]</h2>
+<ul>
+<li>&nbsp;<br><a class=3D"external-link" href=3D"http://wiki/index.php/Deve=
+lopment:Workflow_Framework#Entry_rule" rel=3D"nofollow">3.1Entry rule</a><a=
+ class=3D"external-link" href=3D"http://wiki/index.php/Development:Workflow=
+_Framework#Folder_selection_rule" rel=3D"nofollow">3.2Folder selection rule=
+</a><a class=3D"external-link" href=3D"http://wiki/index.php/Development:Wo=
+rkflow_Framework#Events" rel=3D"nofollow">3.3Events</a><a class=3D"external=
+-link" href=3D"http://wiki/index.php/Development:Workflow_Framework#Connect=
+ing_to_folders" rel=3D"nofollow">3.4Connecting to folders</a><a class=3D"ex=
+ternal-link" href=3D"http://wiki/index.php/Development:Workflow_Framework#P=
+rocess" rel=3D"nofollow">1Process</a><a class=3D"external-link" href=3D"htt=
+p://wiki/index.php/Development:Workflow_Framework#Step" rel=3D"nofollow">2S=
+tep</a><a class=3D"external-link" href=3D"http://wiki/index.php/Development=
+:Workflow_Framework#Activity" rel=3D"nofollow">3Activity</a><a class=3D"ext=
+ernal-link" href=3D"http://wiki/index.php/Development:Workflow_Framework#Fo=
+lder" rel=3D"nofollow">4Folder</a><a class=3D"external-link" href=3D"http:/=
+/wiki/index.php/Development:Workflow_Framework#Robot" rel=3D"nofollow">5Rob=
+ot</a><a class=3D"external-link" href=3D"http://wiki/index.php/Development:=
+Workflow_Framework#SQL" rel=3D"nofollow">6SQL</a><a class=3D"external-link"=
+ href=3D"http://wiki/index.php/Development:Workflow_Framework#See_also" rel=
+=3D"nofollow">7See also</a></li>
+</ul></td>
+</tr>
+</tbody>
+</table>
+</div>
+<h2 id=3D"Workflow-Process">Process</h2>
+<p>The workflow <strong>process</strong> is the top-level description of wh=
+at should happen for workflow. It is analagous to the top level of the XML =
+file you can import and export from the org workflow management pages.</p>
+<p>There may be multiple versions of a workflow process. When a document en=
+ters workflow, it is attached to the <strong>active</strong> version. Once =
+it is attached to a process version, it follows that process version, even =
+if a different version becomes active. There can be only one active version=
+ per document type.</p>
+<h2 id=3D"Workflow-Stephttp://wiki/index.php/Image:WorkflowStepScreenShot.P=
+NG">Step<a class=3D"external-link" href=3D"http://wiki/index.php/Image:Work=
+flowStepScreenShot.PNG" rel=3D"nofollow">http://wiki/index.php/Image:Workfl=
+owStepScreenShot.PNG</a></h2>
+<p>Steps bring visibility into activities. A step is a visual representatio=
+n of an activity or group of activities on the "Approvals" tab of a PO. It =
+offers a way to specify the name of the step, an icon to go along with it, =
+and some help text for the display in workflow configuration.</p>
+<p>A step might be "Departmental Approval" where each department (math and =
+microbiology, for example) could have its own approval activity and associa=
+ted folders.</p>
+<h2 id=3D"Workflow-Activity">Activity</h2>
+<p>Everything that happens in workflow is carried out through an activity. =
+Workflow begins with the special "START" activity, of ActivityType start. I=
+t ends with the "END" activity. Activities are sequenced by ActivityRelatio=
+nships, and executed particularly in that sequence.</p>
+<p>When the document arrives at an activity, the activity assigns the docum=
+ent to one or more folders for processing. Processing in those folders is t=
+hen done by either human or robot.</p>
+<h3 id=3D"Workflow-Entryrule">Entry rule</h3>
+<p>Each activity between "START" and "END" is related to one step, and one =
+folder. Activities may apply only in certain circumstances as set forth in =
+their activity entry rules. Rules can be based on information about the doc=
+ument, lines in the document, the submitter, owner, and supplier for that d=
+ocument. <em>See also</em> <a class=3D"external-link" href=3D"http://conflu=
+ence/x/R4lh" rel=3D"nofollow">Development:Workflow Objects</a><em>.</em></p=
+>
+<h3 id=3D"Workflow-Folderselectionrule">Folder selection rule</h3>
+<p>Another, simpler (at least in workflow configuration) set of rules gover=
+ns folder selection. A few Java classes offer rules for sending documents t=
+o particular folders - to individual folders for financial approval based o=
+n who has what permissions, or some other set of rules. <em>See</em> <a cla=
+ss=3D"external-link" href=3D"http://confluence/x/mgVz" rel=3D"nofollow">Dev=
+elopment:Workflow Activity Configuration</a> <em>for details.</em></p>
+<h3 id=3D"Workflow-Events">Events</h3>
+<p>The "START" and "END" activities are always skipped, but they result in =
+events that take care of the appropriate notifications and status changes.<=
+/p>
+<p>There is also an Aborted event which occurs when an order is rejected or=
+ otherwise kicked out of the system.</p>
+<h3 id=3D"Workflow-Connectingtofolders">Connecting to folders</h3>
+<p>Because workflow folder selection rules allow an activity to route a doc=
+ument to any of several folders, the activity's "FolderID" field is not a r=
+eliable route between the wfFolder and wfActivity tables. A reliable route =
+is by way of the wfFolderActivityInstance table.</p>
+<h2 id=3D"Workflow-Folder">Folder</h2>
+<p>Documents languish in various folders (as configured in workflow setup) =
+until they are moved along by some activity. A person may need to approve t=
+he document and possibly make changes to it, or a robot may have a task to =
+complete to move the document out of this folder.</p>
+<p>There are shared workflow folders (created under organization setup wher=
+e individuals' access is also specified) and personal folders. When a docum=
+ent enters a shared folder, it is in "unassigned" state. From there, an app=
+rover assigns it to their own personal folder. When it enters a personal fo=
+lder (whether by manual assignment or because that was the folder specified=
+ by the activity's folder selection rules), it becomes "assigned". This is =
+to prevent multiple approvers from simultaneously checking up on a single o=
+rder.</p>
+<p>The folder selection rule for financial approvals routes to personal fol=
+ders.</p>
+<p>The DTD for folder configuration (http://cvs.sciquest.com/viewcvs/viewcv=
+s.cgi/*checkout*/applications/docs/dtd/workflow/WorkflowFolder.dtd) sets ou=
+t the possible configurations for a folder.</p>
+<h2 id=3D"Workflow-Robot">Robot</h2>
+<p>Robots are associated with automated folders to provide actions for docu=
+ments in lieu of users. If a folder is designated "automated" and a robot i=
+s not associated with it, then documents will get stuck in that folder.</p>
+<p>A workflow robot is implemented using 2 classes: a robot type (extends W=
+orkflowRobotType) which contains metadata about the robot and is responsibl=
+e for creating an instance of a class implementing WorkflowRobot interface =
+which actually does the work of processing folder entry. All robot types ar=
+e instantiated in AppWorkflowRobots.</p>
+<p>A robot is configured using activity attributes. All robots and their at=
+tributes are documented <a class=3D"external-link" href=3D"http://confluenc=
+e/x/nwVz" rel=3D"nofollow">here</a>.</p>
+<h2 id=3D"Workflow-SQL">SQL</h2>
+<p>Each document type uses identical tables in a separate schema. A templat=
+e DDL for creating a new document type is <a class=3D"external-link" href=
+=3D"http://wiki/images/f/f9/WfTables.txt" rel=3D"nofollow">here</a></p>
+    </div>
+</body>
+</html>
+------=_Part_4_588982690.1778147876737--

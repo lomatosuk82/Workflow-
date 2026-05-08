@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jaggaer Workflow Studio v5</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    @keyframes pulse-glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5); } 50% { box-shadow: 0 0 20px 5px rgba(59, 130, 246, 0.3); } }
+    @keyframes slide-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes flow-line { from { stroke-dashoffset: 100; } to { stroke-dashoffset: 0; } }
+    .animate-pulse-glow { animation: pulse-glow 2s infinite; }
+    .animate-slide-in { animation: slide-in 0.3s ease-out; }
+    .flow-animate { stroke-dasharray: 10; animation: flow-line 1s linear infinite; }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+  <div id="root"></div>
+  <script type="text/babel">
+const { useState, useMemo, useEffect, useCallback } = React;
+
+// ============ STANDARD WORKFLOW TEMPLATES ============
+const STANDARD_WORKFLOWS = {
+  requisition: {
+    name: "Requisition",
+    icon: "📝",
+    description: "Standard purchase requisition approval workflow with department routing, value-based approvals, and PO creation.",
+    steps: [
+      { id: 1, name: "Department Approval", type: "manual", folderRule: "Department", description: "Routes to department manager for initial approval", rule: "Document.RequiresDepartmentalApproval() == true", skipIfNoApprovers: true },
+      { id: 2, name: "Commodity Review", type: "manual", folderRule: "MultiElementDynamic", ruleGroup: "CommodityReview", description: "Specialist review based on commodity codes", rule: "Document.RequiresRuleGroupEvaluation(\"CommodityReview\") == true", skipIfNoApprovers: true },
+      { id: 3, name: "Financial Approval", type: "manual", folderRule: "UserSelectedApprover", description: "Financial approval based on spending limits", rule: "Document.TotalAmount() >= 5000", flags: ["FinancialApproval"] },
+      { id: 4, name: "High Value Review", type: "manual", folderRule: "MultiElementDynamic", ruleGroup: "HighValueApproval", description: "Executive approval for high-value purchases", rule: "Document.TotalAmount() >= 25000", skipIfNoApprovers: true },
+      { id: 5, name: "Create PO", type: "automated", folderRule: "ExplicitFolder", folder: "Create PO", robot: "CreatePORobot", description: "System automatically creates Purchase Order", rule: "true" }
+    ]
+  },
+  purchaseOrder: {
+    name: "Purchase Order",
+    icon: "📦",
+    description: "PO workflow with buyer review, change order handling, and supplier distribution.",
+    steps: [
+      { id: 1, name: "Buyer Review", type: "manual", folderRule: "ExplicitFolder", folder: "Buyer Review", description: "Procurement team reviews PO details", rule: "true" },
+      { id: 2, name: "Manager Approval", type: "manual", folderRule: "MultiElementDynamic", ruleGroup: "POApproval", description: "Manager approval for PO value", rule: "Document.TotalAmount() >= 10000", skipIfNoApprovers: true },
+      { id: 3, name: "Revise PO", type: "automated", folderRule: "ExplicitFolder", folder: "Revise PO", robot: "CreatePORevisionRobot", description: "Creates revision documents (Required)", rule: "true" },
+      { id: 4, name: "Distribute PO", type: "automated", folderRule: "ExplicitFolder", folder: "Distribute PO", robot: "PODistributor", description: "Sends PO to supplier", rule: "true" }
+    ]
+  },
+  invoice: {
+    name: "Invoice",
+    icon: "💰",
+    description: "Invoice processing with matching validation, exception handling, and payment approval.",
+    steps: [
+      { id: 1, name: "3-Way Match", type: "automated", folderRule: "ExplicitFolder", folder: "Invoice Matching", robot: "InvoiceMatchRobot", description: "Validates invoice against PO and receipt", rule: "true" },
+      { id: 2, name: "AP Review", type: "manual", folderRule: "ExplicitFolder", folder: "AP Review", description: "AP team reviews invoice details", rule: "Document.MatchStatus != \"Matched\"" },
+      { id: 3, name: "Exception Approval", type: "manual", folderRule: "MultiElementDynamic", ruleGroup: "InvoiceException", description: "Approval for invoices with variances", rule: "Document.HasException == true", skipIfNoApprovers: true },
+      { id: 4, name: "Payment Approval", type: "manual", folderRule: "MultiElementDynamic", ruleGroup: "PaymentApproval", description: "Final approval before payment release", rule: "Document.TotalAmount() >= 10000", skipIfNoApprovers: true }
+    ]
+  },
+  receipt: {
+    name: "Receipt",
+    icon: "📥",
+    description: "Goods receipt workflow with quality inspection and inventory updates.",
+    steps: [
+      { id: 1, name: "Quality Inspection", type: "manual", folderRule: "ExplicitFolder", folder: "QA Review", description: "Quality check for received goods", rule: "Document.RequiresInspection == true" },
+      { id: 2, name: "PO Owner Review", type: "manual", folderRule: "ReceiptPurchaseOrderOwner", description: "PO owner confirms receipt", rule: "true", skipIfNoApprovers: true },
+      { id: 3, name: "Create Inventory", type: "automated", folderRule: "ExplicitFolder", folder: "Create Inventory", robot: "CreateInventoryRobot", description: "Updates inventory records", rule: "true" }
+    ]
+  },
+  contract: {
+    name: "Contract",
+    icon: "📄",
+    description: "Contract approval with legal review, risk assessment, and executive sign-off.",
+    steps: [
+      { id: 1, name: "Contract Owner Review", type: "manual", folderRule: "PreparedFor", description: "Contract owner reviews terms", rule: "true", flags: ["ContractEditable"] },
+      { id: 2, name: "Legal Review", type: "manual", folderRule: "ExplicitFolder", folder: "Legal Review", description: "Legal team reviews contract terms", rule: "true", flags: ["ContractEditable", "NoBypass"] },
+      { id: 3, name: "Risk Assessment", type: "manual", folderRule: "MultiElementDynamic", ruleGroup: "ContractRisk", description: "Risk review for high-value contracts", rule: "Document.TotalValue >= 100000", skipIfNoApprovers: true },
+      { id: 4, name: "Executive Approval", type: "manual", folderRule: "MultiElementDynamic", ruleGroup: "ExecutiveApproval", description: "C-level approval for major contracts", rule: "Document.TotalValue >= 500000", skipIfNoApprovers: true }
+    ]
+  },
+  supplierRegistration: {
+    name: "Supplier Registration",
+    icon: "🏢",
+    description: "New supplier onboarding with compliance verification and approval.",
+    steps: [
+      { id: 1, name: "Procurement Review", type: "manual", folderRule: "ExplicitFolder", folder: "Supplier Review", description: "Procurement validates supplier info", rule: "true" },
+      { id: 2, name: "Compliance Check", type: "manual", folderRule: "ExplicitFolder", folder: "Compliance Review", description: "Verify compliance requirements", rule: "true" },
+      { id: 3, name: "Risk Assessment", type: "manual", folderRule: "MultiElementDynamic", ruleGroup: "SupplierRisk", description: "Risk-based approval", rule: "Supplier.RiskLevel != \"Low\"", skipIfNoApprovers: true }
+    ]
+  }
+};
+
+// ============ FOLDER SELECTION RULES ============
+const FOLDER_RULES = {
+  ExplicitFolder: { name: "Explicit Folder", description: "Routes to a specific shared folder", requiresFolder: true },
+  Department: { name: "Department", description: "Routes based on document's department" },
+  MultiElementDynamic: { name: "ADW Rule Group", description: "Advanced Dynamic Workflow routing", requiresRuleGroup: true },
+  UserSelectedApprover: { name: "User Selected", description: "Routes to user-selected approver" },
+  CustomFieldValue: { name: "Custom Field", description: "Routes based on custom field value", requiresCustomField: true },
+  CommodityCode: { name: "Commodity Code", description: "Routes based on commodity codes" },
+  FormType: { name: "Form Type", description: "Routes based on form types" },
+  InvoiceOwner: { name: "Invoice Owner", description: "Routes to invoice owner (Invoice only)" },
+  PreparedFor: { name: "Prepared For", description: "Routes to prepared-for user" },
+  ReceiptPurchaseOrderOwner: { name: "Receipt PO Owner", description: "Routes to PO owner (Receipt only)" },
+  ChangeRequestPOOwner: { name: "Change Request PO Owner", description: "Routes to PO owner (Change Request)" },
+  MasterContractDocumentApprover: { name: "Contract Approvers", description: "Routes to contract invoice approvers" }
+};
+
+// ============ ROBOTS ============
+const ROBOTS = {
+  CreatePORobot: { id: 401, name: "Create PO", description: "Creates PO in Order Manager" },
+  CreatePORevisionRobot: { id: 3333, name: "Create PO Revision", description: "Creates distribution documents" },
+  PODistributor: { id: 100, name: "PO Distributor", description: "Distributes PO to supplier" },
+  RejectRequisitionRobot: { id: 400, name: "Reject Requisition", description: "Fully rejects the requisition" },
+  ReturnRequisitionRobot: { id: 403, name: "Return Requisition", description: "Returns PR to submitter" },
+  CreateInventoryRobot: { id: 700, name: "Create Inventory", description: "Creates inventory receipt" },
+  InvoiceMatchRobot: { id: 800, name: "Invoice Match", description: "Performs 3-way matching" },
+  DelayWorkflowRobot: { id: 610, name: "Delay Workflow", description: "Pauses workflow for specified time" }
+};
+
+// ============ ACTIVITY FLAGS ============
+const ACTIVITY_FLAGS = {
+  NoBypass: "Cannot be skipped or expedited",
+  FinancialApproval: "Checks approval limits",
+  ContractEditable: "Approver can edit contract",
+  OrderConsolidation: "Allows PO consolidation",
+  MFARequired: "Requires multi-factor authentication"
+};
+
+// ============ ADW RULES BUILDER COMPONENT ============
+const ADWRulesBuilder = ({ rules, onChange }) => {
+  const emptyRule = { 
+    departments: "", 
+    minAmount: "", 
+    maxAmount: "", 
+    commodityCodes: "", 
+    glAccounts: "", 
+    companyCodes: "", 
+    approvers: "" 
+  };
+
+  const addRule = () => onChange([...rules, { ...emptyRule, id: Date.now() }]);
+  const removeRule = (id) => onChange(rules.filter(r => r.id !== id));
+  const updateRule = (id, field, value) => onChange(rules.map(r => r.id === id ? {...r, [field]: value} : r));
+
+  const applyTemplate = (template) => {
+    const templates = {
+      amountTiers: [
+        { ...emptyRule, id: Date.now(), minAmount: "0", maxAmount: "5000", approvers: "manager@company.com" },
+        { ...emptyRule, id: Date.now() + 1, minAmount: "5000", maxAmount: "25000", approvers: "director@company.com" },
+        { ...emptyRule, id: Date.now() + 2, minAmount: "25000", maxAmount: "", approvers: "vp@company.com" }
+      ],
+      byDepartment: [
+        { ...emptyRule, id: Date.now(), departments: "IT", approvers: "it-manager@company.com" },
+        { ...emptyRule, id: Date.now() + 1, departments: "HR", approvers: "hr-manager@company.com" },
+        { ...emptyRule, id: Date.now() + 2, departments: "Finance", approvers: "finance-manager@company.com" }
+      ],
+      deptAndAmount: [
+        { ...emptyRule, id: Date.now(), departments: "IT", minAmount: "0", maxAmount: "10000", approvers: "it-manager@company.com" },
+        { ...emptyRule, id: Date.now() + 1, departments: "IT", minAmount: "10000", maxAmount: "", approvers: "it-director@company.com" },
+        { ...emptyRule, id: Date.now() + 2, departments: "HR", minAmount: "0", maxAmount: "10000", approvers: "hr-manager@company.com" }
+      ],
+      byCommodity: [
+        { ...emptyRule, id: Date.now(), commodityCodes: "IT, Software", approvers: "it-procurement@company.com" },
+        { ...emptyRule, id: Date.now() + 1, commodityCodes: "MRO, Facilities", approvers: "facilities@company.com" },
+        { ...emptyRule, id: Date.now() + 2, commodityCodes: "Services", approvers: "services-manager@company.com" }
+      ]
+    };
+    onChange(templates[template] || []);
+  };
+
+  const generateRulePreview = (rule) => {
+    const conditions = [];
+    if (rule.departments) conditions.push(`Dept: ${rule.departments}`);
+    if (rule.minAmount) conditions.push(`Min: $${rule.minAmount}`);
+    if (rule.maxAmount) conditions.push(`Max: $${rule.maxAmount}`);
+    if (rule.commodityCodes) conditions.push(`Commodity: ${rule.commodityCodes}`);
+    if (rule.glAccounts) conditions.push(`GL: ${rule.glAccounts}`);
+    if (rule.companyCodes) conditions.push(`Co: ${rule.companyCodes}`);
+    return conditions.length > 0 ? conditions.join(" AND ") : "No conditions (matches all)";
+  };
+
+  return (
+    <div className="md:col-span-2 mt-4">
+      <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-4">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <span className="text-amber-600">📋</span>
+            <h4 className="font-semibold text-amber-900">ADW Approval Rules</h4>
+          </div>
+          <div className="flex items-center gap-2">
+            <select 
+              onChange={(e) => { if (e.target.value) applyTemplate(e.target.value); e.target.value = ""; }}
+              className="text-xs px-2 py-1 border border-amber-300 rounded bg-white text-amber-800"
+            >
+              <option value="">Quick Templates...</option>
+              <option value="amountTiers">Amount Tiers</option>
+              <option value="byDepartment">By Department</option>
+              <option value="deptAndAmount">Dept + Amount</option>
+              <option value="byCommodity">By Commodity</option>
+            </select>
+            {rules.length > 0 && (
+              <button onClick={() => onChange([])} className="text-xs px-2 py-1 bg-amber-200 text-amber-800 rounded hover:bg-amber-300">
+                Clear All
+              </button>
+            )}
+            <button onClick={addRule} className="text-xs px-3 py-1 bg-amber-500 text-white rounded hover:bg-amber-600">
+              + Add Rule
+            </button>
+          </div>
+        </div>
+
+        {rules.length === 0 ? (
+          <div className="text-center py-6 text-amber-700">
+            <p className="text-sm">No rules configured. Click "+ Add Rule" or select a template.</p>
+            <p className="text-xs mt-1 text-amber-600">Rules define conditions for routing to specific approvers.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {rules.map((rule, idx) => (
+              <div key={rule.id} className="bg-white border border-amber-200 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-semibold text-amber-800">Rule #{idx + 1}</span>
+                  <button onClick={() => removeRule(rule.id)} className="text-xs text-red-500 hover:text-red-700">
+                    ✕ Remove
+                  </button>
+                </div>
+                
+                <div className="grid grid-cols-3 gap-3 mb-3">
+                  <div>
+                    <label className="block text-xs font-medium text-amber-700 mb-1">Department(s)</label>
+                    <input
+                      value={rule.departments || ""}
+                      onChange={(e) => updateRule(rule.id, "departments", e.target.value)}
+                      className="w-full px-2 py-1.5 text-sm border border-amber-200 rounded focus:ring-1 focus:ring-amber-400 focus:border-amber-400"
+                      placeholder="e.g., IT, HR, Finance"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-amber-700 mb-1">Min Amount ($)</label>
+                    <input
+                      type="number"
+                      value={rule.minAmount || ""}
+                      onChange={(e) => updateRule(rule.id, "minAmount", e.target.value)}
+                      className="w-full px-2 py-1.5 text-sm border border-amber-200 rounded focus:ring-1 focus:ring-amber-400 focus:border-amber-400"
+                      placeholder="0"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-amber-700 mb-1">Max Amount ($)</label>
+                    <input
+                      type="number"
+                      value={rule.maxAmount || ""}
+                      onChange={(e) => updateRule(rule.id, "maxAmount", e.target.value)}
+                      className="w-full px-2 py-1.5 text-sm border border-amber-200 rounded focus:ring-1 focus:ring-amber-400 focus:border-amber-400"
+                      placeholder="No limit"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3 mb-3">
+                  <div>
+                    <label className="block text-xs font-medium text-amber-700 mb-1">Commodity Code(s)</label>
+                    <input
+                      value={rule.commodityCodes || ""}
+                      onChange={(e) => updateRule(rule.id, "commodityCodes", e.target.value)}
+                      className="w-full px-2 py-1.5 text-sm border border-amber-200 rounded focus:ring-1 focus:ring-amber-400 focus:border-amber-400"
+                      placeholder="e.g., IT, MRO"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-amber-700 mb-1">GL Account(s)</label>
+                    <input
+                      value={rule.glAccounts || ""}
+                      onChange={(e) => updateRule(rule.id, "glAccounts", e.target.value)}
+                      className="w-full px-2 py-1.5 text-sm border border-amber-200 rounded focus:ring-1 focus:ring-amber-400 focus:border-amber-400"
+                      placeholder="e.g., 1505, 1510"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-amber-700 mb-1">Company Code(s)</label>
+                    <input
+                      value={rule.companyCodes || ""}
+                      onChange={(e) => updateRule(rule.id, "companyCodes", e.target.value)}
+                      className="w-full px-2 py-1.5 text-sm border border-amber-200 rounded focus:ring-1 focus:ring-amber-400 focus:border-amber-400"
+                      placeholder="e.g., 1000, 2000"
+                    />
+                  </div>
+                </div>
+
+                <div className="mb-2">
+                  <label className="block text-xs font-medium text-amber-700 mb-1">👤 Approver(s) for this rule</label>
+                  <input
+                    value={rule.approvers || ""}
+                    onChange={(e) => updateRule(rule.id, "approvers", e.target.value)}
+                    className="w-full px-2 py-1.5 text-sm border border-amber-200 rounded focus:ring-1 focus:ring-amber-400 focus:border-amber-400"
+                    placeholder="e.g., john.smith@company.com, jane.doe@company.com"
+                  />
+                </div>
+
+                <div className="bg-amber-50 rounded px-3 py-2 text-xs text-amber-700">
+                  <strong>Rule:</strong> {generateRulePreview(rule)} → {rule.approvers ? `[${rule.approvers}]` : "[No approvers set]"}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {rules.length > 0 && (
+          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <h5 className="text-xs font-semibold text-blue-800 mb-2">📊 Rules Summary</h5>
+            <div className="text-xs text-blue-700 space-y-1">
+              {rules.map((rule, idx) => (
+                <div key={rule.id} className="flex items-center gap-2">
+                  <span className="font-medium">#{idx + 1}:</span>
+                  <span>{generateRulePreview(rule)}</span>
+                  <span className="text-blue-500">→</span>
+                  <span className="font-medium">{rule.approvers || "No approvers"}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ============ MAIN APP ============
+const App = () => {
+  const [mode, setMode] = useState(null); // null, 'builder', 'template', 'questionnaire'
+  const [workflowType, setWorkflowType] = useState(null);
+  const [steps, setSteps] = useState([]);
+  const [workflowName, setWorkflowName] = useState("");
+  const [showEmulator, setShowEmulator] = useState(false);
+  const [selectedStep, setSelectedStep] = useState(null);
+  const [validationErrors, setValidationErrors] = useState([]);
+
+  // Load standard workflow template
+  const loadTemplate = (type) => {
+    const template = STANDARD_WORKFLOWS[type];
+    if (template) {
+      setWorkflowType(type);
+      setWorkflowName(template.name + " Workflow");
+      setSteps(template.steps.map(s => ({ ...s, id: Date.now() + Math.random() })));
+    }
+  };
+
+  // Validate workflow
+  const validateWorkflow = useCallback(() => {
+    const errors = [];
+    if (!workflowName.trim()) errors.push({ type: "error", message: "Workflow name is required" });
+    if (steps.length === 0) errors.push({ type: "error", message: "At least one step is required" });
+    
+    steps.forEach((step, idx) => {
+      if (!step.name?.trim()) errors.push({ type: "error", message: `Step ${idx + 1}: Name is required` });
+      if (step.folderRule === "ExplicitFolder" && !step.folder?.trim()) {
+        errors.push({ type: "error", message: `Step "${step.name}": Folder name is required` });
+      }
+      if (step.folderRule === "MultiElementDynamic" && !step.ruleGroup?.trim()) {
+        errors.push({ type: "error", message: `Step "${step.name}": Rule Group is required` });
+      }
+      if (step.type === "automated" && !step.robot) {
+        errors.push({ type: "warning", message: `Step "${step.name}": No robot specified for automated step` });
+      }
+    });
+
+    // Check for required PO workflow steps
+    if (workflowType === "purchaseOrder") {
+      const hasRevisePO = steps.some(s => s.robot === "CreatePORevisionRobot");
+      if (!hasRevisePO) errors.push({ type: "warning", message: "PO workflows should include a Revise PO step" });
+    }
+
+    setValidationErrors(errors);
+    return errors.filter(e => e.type === "error").length === 0;
+  }, [workflowName, steps, workflowType]);
+
+  // Generate XML
+  const generateXML = () => {
+    const slugify = (str) => str.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    
+    let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+    xml += `<WorkflowProcess name="${slugify(workflowName)}" version="1">\n`;
+    xml += `  <WorkflowType>${workflowType || 'requisition'}</WorkflowType>\n\n`;
+    
+    // Steps
+    xml += `  <!-- Steps -->\n`;
+    steps.forEach(step => {
+      xml += `  <Step name="${step.name}">\n`;
+      xml += `    <HelpText>${step.description || ''}</HelpText>\n`;
+      xml += `  </Step>\n`;
+    });
+    
+    // Activities
+    xml += `\n  <!-- Activities -->\n`;
+    xml += `  <Activity name="START">\n    <ActivityType>start</ActivityType>\n  </Activity>\n\n`;
+    
+    steps.forEach(step => {
+      xml += `  <Activity name="${slugify(step.name)}">\n`;
+      xml += `    <ActivityType>${step.type}</ActivityType>\n`;
+      xml += `    <StepRef name="${step.name}" />\n`;
+      if (step.folder) xml += `    <FolderRef name="${step.folder}" />\n`;
+      xml += `    <Rule><![CDATA[${step.rule || 'true'}]]></Rule>\n`;
+      xml += `    <FolderSelectionRule>${step.folderRule}</FolderSelectionRule>\n`;
+      if (step.ruleGroup) {
+        xml += `    <Attribute name="RuleGroupInternalName">\n`;
+        xml += `      <AttrValue lang="default">${step.ruleGroup}</AttrValue>\n`;
+        xml += `    </Attribute>\n`;
+      }
+      if (step.skipIfNoApprovers) {
+        xml += `    <Attribute name="wfSkipStepIfNoApprovers">\n`;
+        xml += `      <AttrValue lang="default">true</AttrValue>\n`;
+        xml += `    </Attribute>\n`;
+      }
+      // ADW Rules as config attribute
+      if (step.adwRules && step.adwRules.length > 0) {
+        const rulesConfig = step.adwRules.map(r => ({
+          dept: r.departments,
+          min: r.minAmount,
+          max: r.maxAmount,
+          commodity: r.commodityCodes,
+          gl: r.glAccounts,
+          company: r.companyCodes,
+          approvers: r.approvers
+        }));
+        xml += `    <Attribute name="wfADWRulesConfig">\n`;
+        xml += `      <AttrValue lang="default"><![CDATA[${JSON.stringify(rulesConfig)}]]></AttrValue>\n`;
+        xml += `    </Attribute>\n`;
+        // Also add approvers list for backward compatibility
+        const allApprovers = step.adwRules.map(r => r.approvers).filter(Boolean).join(', ');
+        if (allApprovers) {
+          xml += `    <Attribute name="wfADWApprovers">\n`;
+          xml += `      <AttrValue lang="default">${allApprovers}</AttrValue>\n`;
+          xml += `    </Attribute>\n`;
+        }
+      }
+      if (step.flags) {
+        step.flags.forEach(flag => xml += `    <Flag>${flag}</Flag>\n`);
+      }
+      // Robot reference for automated steps
+      if (step.type === 'automated' && step.robot) {
+        xml += `    <!-- Robot: ${ROBOTS[step.robot]?.name || step.robot} (ID: ${ROBOTS[step.robot]?.id || 'N/A'}) -->\n`;
+      }
+      xml += `  </Activity>\n\n`;
+    });
+    
+    xml += `  <Activity name="END">\n    <ActivityType>end</ActivityType>\n  </Activity>\n\n`;
+    
+    // Relationships
+    xml += `  <!-- Relationships -->\n`;
+    xml += `  <ActivityRelationship from="START" to="${slugify(steps[0]?.name || 'END')}" />\n`;
+    steps.forEach((step, idx) => {
+      const next = steps[idx + 1] ? slugify(steps[idx + 1].name) : "END";
+      xml += `  <ActivityRelationship from="${slugify(step.name)}" to="${next}" />\n`;
+    });
+    
+    xml += `</WorkflowProcess>`;
+    return xml;
+  };
+
+  // Welcome Screen
+  if (!mode) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-8">
+        <div className="max-w-4xl w-full">
+          <div className="text-center mb-12">
+            <h1 className="text-4xl font-bold text-slate-900 mb-3">🔧 Workflow Studio</h1>
+            <p className="text-lg text-slate-600">Build Jaggaer approval workflows in minutes</p>
+          </div>
+          
+          <div className="grid md:grid-cols-3 gap-6 mb-12">
+            <button 
+              onClick={() => setMode("builder")}
+              className="group p-8 bg-white rounded-2xl border-2 border-slate-200 hover:border-blue-500 hover:shadow-xl transition-all text-left"
+            >
+              <div className="text-4xl mb-4 group-hover:scale-110 transition-transform">🔧</div>
+              <h3 className="text-xl font-bold text-slate-900 mb-2">Builder</h3>
+              <p className="text-sm text-slate-600">Start with standard templates and customize step-by-step</p>
+            </button>
+            
+            <button 
+              onClick={() => setMode("template")}
+              className="group p-8 bg-white rounded-2xl border-2 border-slate-200 hover:border-emerald-500 hover:shadow-xl transition-all text-left"
+            >
+              <div className="text-4xl mb-4 group-hover:scale-110 transition-transform">📊</div>
+              <h3 className="text-xl font-bold text-slate-900 mb-2">Template Import</h3>
+              <p className="text-sm text-slate-600">Import workflow from Excel template</p>
+            </button>
+            
+            <button 
+              onClick={() => setMode("questionnaire")}
+              className="group p-8 bg-white rounded-2xl border-2 border-slate-200 hover:border-purple-500 hover:shadow-xl transition-all text-left"
+            >
+              <div className="text-4xl mb-4 group-hover:scale-110 transition-transform">📋</div>
+              <h3 className="text-xl font-bold text-slate-900 mb-2">Questionnaire</h3>
+              <p className="text-sm text-slate-600">Answer questions to generate workflow</p>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Builder Mode
+  if (mode === "builder") {
+    return (
+      <div className="min-h-screen">
+        {/* Header */}
+        <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
+          <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <button onClick={() => { setMode(null); setWorkflowType(null); setSteps([]); }} className="text-slate-500 hover:text-slate-700">
+                ← Back
+              </button>
+              <div className="h-6 w-px bg-slate-200"></div>
+              <h1 className="text-lg font-semibold text-slate-900">
+                {workflowType ? `${STANDARD_WORKFLOWS[workflowType]?.icon} ${workflowName}` : "Select Workflow Type"}
+              </h1>
+            </div>
+            
+            {workflowType && (
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => { validateWorkflow(); setShowEmulator(true); }}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
+                >
+                  ▶️ Simulate
+                </button>
+                <button 
+                  onClick={() => {
+                    if (validateWorkflow()) {
+                      const xml = generateXML();
+                      const blob = new Blob([xml], { type: 'text/xml' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `${workflowName.replace(/\s+/g, '_')}.xml`;
+                      a.click();
+                    }
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+                >
+                  📥 Export XML
+                </button>
+              </div>
+            )}
+          </div>
+        </header>
+
+        <main className="max-w-7xl mx-auto px-6 py-8">
+          {/* Workflow Type Selection */}
+          {!workflowType ? (
+            <div className="animate-slide-in">
+              <h2 className="text-2xl font-bold text-slate-900 mb-2">Select Workflow Type</h2>
+              <p className="text-slate-600 mb-8">Choose a standard workflow template to start with</p>
+              
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {Object.entries(STANDARD_WORKFLOWS).map(([key, wf]) => (
+                  <button
+                    key={key}
+                    onClick={() => loadTemplate(key)}
+                    className="group p-6 bg-white rounded-xl border-2 border-slate-200 hover:border-blue-500 hover:shadow-lg transition-all text-left"
+                  >
+                    <div className="flex items-start justify-between mb-4">
+                      <span className="text-3xl">{wf.icon}</span>
+                      <span className="text-xs text-slate-400">{wf.steps.length} steps</span>
+                    </div>
+                    <h3 className="text-lg font-semibold text-slate-900 mb-2">{wf.name}</h3>
+                    <p className="text-sm text-slate-600 line-clamp-2">{wf.description}</p>
+                    <div className="mt-4 flex flex-wrap gap-1">
+                      {wf.steps.slice(0, 3).map((s, i) => (
+                        <span key={i} className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">{s.name}</span>
+                      ))}
+                      {wf.steps.length > 3 && <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">+{wf.steps.length - 3}</span>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="grid lg:grid-cols-3 gap-8">
+              {/* Steps List */}
+              <div className="lg:col-span-2 space-y-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-900">Workflow Steps</h2>
+                    <p className="text-sm text-slate-500">{steps.length} steps configured</p>
+                  </div>
+                  <button
+                    onClick={() => setSteps([...steps, { 
+                      id: Date.now(), 
+                      name: "New Step", 
+                      type: "manual", 
+                      folderRule: "ExplicitFolder",
+                      description: "",
+                      rule: "true"
+                    }])}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                  >
+                    + Add Step
+                  </button>
+                </div>
+
+                {/* Validation Errors */}
+                {validationErrors.length > 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                    <h4 className="font-medium text-red-800 mb-2">⚠️ Validation Issues</h4>
+                    <ul className="space-y-1">
+                      {validationErrors.map((err, i) => (
+                        <li key={i} className={`text-sm ${err.type === 'error' ? 'text-red-700' : 'text-amber-700'}`}>
+                          {err.type === 'error' ? '❌' : '⚠️'} {err.message}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Steps */}
+                <div className="space-y-3">
+                  {steps.map((step, idx) => (
+                    <div 
+                      key={step.id}
+                      className={`bg-white rounded-xl border-2 transition-all ${
+                        selectedStep === step.id ? 'border-blue-500 shadow-lg' : 'border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div 
+                        className="p-4 cursor-pointer"
+                        onClick={() => setSelectedStep(selectedStep === step.id ? null : step.id)}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${
+                            step.type === 'automated' ? 'bg-purple-500' : 
+                            step.type === 'notification' ? 'bg-amber-500' : 'bg-blue-500'
+                          }`}>
+                            {idx + 1}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <h3 className="font-semibold text-slate-900 truncate">{step.name}</h3>
+                              <span className={`px-2 py-0.5 rounded text-xs ${
+                                step.type === 'automated' ? 'bg-purple-100 text-purple-700' : 
+                                step.type === 'notification' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
+                              }`}>
+                                {step.type}
+                              </span>
+                              <span className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">
+                                {FOLDER_RULES[step.folderRule]?.name || step.folderRule}
+                              </span>
+                            </div>
+                            <p className="text-sm text-slate-500 truncate mt-1">{step.description}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); if (idx > 0) { const newSteps = [...steps]; [newSteps[idx-1], newSteps[idx]] = [newSteps[idx], newSteps[idx-1]]; setSteps(newSteps); }}}
+                              className="p-1 text-slate-400 hover:text-slate-600"
+                              disabled={idx === 0}
+                            >↑</button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); if (idx < steps.length - 1) { const newSteps = [...steps]; [newSteps[idx], newSteps[idx+1]] = [newSteps[idx+1], newSteps[idx]]; setSteps(newSteps); }}}
+                              className="p-1 text-slate-400 hover:text-slate-600"
+                              disabled={idx === steps.length - 1}
+                            >↓</button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setSteps(steps.filter(s => s.id !== step.id)); }}
+                              className="p-1 text-red-400 hover:text-red-600"
+                            >×</button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Expanded Step Editor */}
+                      {selectedStep === step.id && (
+                        <div className="border-t border-slate-200 p-4 bg-slate-50 animate-slide-in">
+                          <div className="grid md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-slate-700 mb-1">Step Name</label>
+                              <input
+                                value={step.name}
+                                onChange={(e) => setSteps(steps.map(s => s.id === step.id ? {...s, name: e.target.value} : s))}
+                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-slate-700 mb-1">Activity Type</label>
+                              <select
+                                value={step.type}
+                                onChange={(e) => setSteps(steps.map(s => s.id === step.id ? {...s, type: e.target.value} : s))}
+                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              >
+                                <option value="manual">Manual (Human Approval)</option>
+                                <option value="automated">Automated (Robot)</option>
+                                <option value="notification">Notification (Email Only)</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-slate-700 mb-1">Folder Selection Rule</label>
+                              <select
+                                value={step.folderRule}
+                                onChange={(e) => setSteps(steps.map(s => s.id === step.id ? {...s, folderRule: e.target.value} : s))}
+                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                              >
+                                {Object.entries(FOLDER_RULES).map(([key, rule]) => (
+                                  <option key={key} value={key}>{rule.name}</option>
+                                ))}
+                              </select>
+                            </div>
+                            {step.folderRule === "ExplicitFolder" && (
+                              <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Folder Name</label>
+                                <input
+                                  value={step.folder || ""}
+                                  onChange={(e) => setSteps(steps.map(s => s.id === step.id ? {...s, folder: e.target.value} : s))}
+                                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                  placeholder="e.g., Buyer Review"
+                                />
+                              </div>
+                            )}
+                            {step.folderRule === "MultiElementDynamic" && (
+                              <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Rule Group Name</label>
+                                <input
+                                  value={step.ruleGroup || ""}
+                                  onChange={(e) => setSteps(steps.map(s => s.id === step.id ? {...s, ruleGroup: e.target.value} : s))}
+                                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                  placeholder="e.g., HighValueApproval"
+                                />
+                              </div>
+                            )}
+                            {/* ADW Rules Builder */}
+                            {step.folderRule === "MultiElementDynamic" && (
+                              <ADWRulesBuilder 
+                                rules={step.adwRules || []}
+                                onChange={(rules) => setSteps(steps.map(s => s.id === step.id ? {...s, adwRules: rules} : s))}
+                              />
+                            )}
+                            {step.type === "automated" && (
+                              <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Robot</label>
+                                <select
+                                  value={step.robot || ""}
+                                  onChange={(e) => setSteps(steps.map(s => s.id === step.id ? {...s, robot: e.target.value} : s))}
+                                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                >
+                                  <option value="">Select Robot...</option>
+                                  {Object.entries(ROBOTS).map(([key, robot]) => (
+                                    <option key={key} value={key}>{robot.name}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+                            <div className="md:col-span-2">
+                              <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                              <input
+                                value={step.description || ""}
+                                onChange={(e) => setSteps(steps.map(s => s.id === step.id ? {...s, description: e.target.value} : s))}
+                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="What happens in this step?"
+                              />
+                            </div>
+                            <div className="md:col-span-2">
+                              <label className="block text-sm font-medium text-slate-700 mb-1">Entry Rule (CDATA)</label>
+                              <input
+                                value={step.rule || "true"}
+                                onChange={(e) => setSteps(steps.map(s => s.id === step.id ? {...s, rule: e.target.value} : s))}
+                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                                placeholder="true"
+                              />
+                            </div>
+                            <div className="md:col-span-2">
+                              <label className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={step.skipIfNoApprovers || false}
+                                  onChange={(e) => setSteps(steps.map(s => s.id === step.id ? {...s, skipIfNoApprovers: e.target.checked} : s))}
+                                  className="rounded border-slate-300"
+                                />
+                                <span className="text-sm text-slate-700">Skip if no approvers configured</span>
+                              </label>
+                            </div>
+                            
+                            {/* Activity Flags */}
+                            <div className="md:col-span-2 mt-2">
+                              <label className="block text-sm font-medium text-slate-700 mb-2">Activity Flags</label>
+                              <div className="flex flex-wrap gap-3">
+                                {Object.entries(ACTIVITY_FLAGS).map(([flag, desc]) => (
+                                  <label key={flag} className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-lg cursor-pointer hover:bg-slate-200">
+                                    <input
+                                      type="checkbox"
+                                      checked={(step.flags || []).includes(flag)}
+                                      onChange={(e) => {
+                                        const flags = step.flags || [];
+                                        const newFlags = e.target.checked 
+                                          ? [...flags, flag] 
+                                          : flags.filter(f => f !== flag);
+                                        setSteps(steps.map(s => s.id === step.id ? {...s, flags: newFlags} : s));
+                                      }}
+                                      className="rounded border-slate-300"
+                                    />
+                                    <span className="text-xs text-slate-700" title={desc}>{flag}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Sidebar - Flow Preview */}
+              <div className="space-y-6">
+                <div className="bg-white rounded-xl border border-slate-200 p-4">
+                  <h3 className="font-semibold text-slate-900 mb-4">📊 Workflow Flow</h3>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white text-xs">▶</div>
+                      <span className="text-sm text-slate-600">START</span>
+                    </div>
+                    {steps.map((step, idx) => (
+                      <div key={step.id}>
+                        <div className="ml-4 h-6 border-l-2 border-dashed border-slate-300"></div>
+                        <div className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs ${
+                            step.type === 'automated' ? 'bg-purple-500' : 
+                            step.type === 'notification' ? 'bg-amber-500' : 'bg-blue-500'
+                          }`}>
+                            {step.type === 'automated' ? '🤖' : step.type === 'notification' ? '📧' : '👤'}
+                          </div>
+                          <span className="text-sm text-slate-700 truncate">{step.name}</span>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="ml-4 h-6 border-l-2 border-dashed border-slate-300"></div>
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center text-white text-xs">■</div>
+                      <span className="text-sm text-slate-600">END</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-xl border border-slate-200 p-4">
+                  <h3 className="font-semibold text-slate-900 mb-3">📁 Required Folders</h3>
+                  <div className="space-y-2">
+                    {[...new Set(steps.filter(s => s.folder).map(s => s.folder))].map(folder => (
+                      <div key={folder} className="flex items-center gap-2 text-sm">
+                        <span className="text-amber-500">📂</span>
+                        <span className="text-slate-700">{folder}</span>
+                      </div>
+                    ))}
+                    {steps.filter(s => s.folder).length === 0 && (
+                      <p className="text-sm text-slate-400">No explicit folders required</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-xl border border-slate-200 p-4">
+                  <h3 className="font-semibold text-slate-900 mb-3">⚙️ Rule Groups</h3>
+                  <div className="space-y-2">
+                    {[...new Set(steps.filter(s => s.ruleGroup).map(s => s.ruleGroup))].map(rg => (
+                      <div key={rg} className="flex items-center gap-2 text-sm">
+                        <span className="text-blue-500">📋</span>
+                        <span className="text-slate-700">{rg}</span>
+                      </div>
+                    ))}
+                    {steps.filter(s => s.ruleGroup).length === 0 && (
+                      <p className="text-sm text-slate-400">No ADW rule groups</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* ADW Rules Summary */}
+                {steps.some(s => s.adwRules && s.adwRules.length > 0) && (
+                  <div className="bg-amber-50 rounded-xl border border-amber-200 p-4">
+                    <h3 className="font-semibold text-amber-900 mb-3">📋 ADW Rules</h3>
+                    <div className="space-y-3">
+                      {steps.filter(s => s.adwRules && s.adwRules.length > 0).map(step => (
+                        <div key={step.id}>
+                          <div className="text-xs font-medium text-amber-800 mb-1">{step.name}</div>
+                          <div className="space-y-1">
+                            {step.adwRules.map((rule, i) => (
+                              <div key={i} className="text-xs text-amber-700 bg-white rounded px-2 py-1">
+                                {rule.departments && <span className="mr-1">Dept:{rule.departments}</span>}
+                                {rule.minAmount && <span className="mr-1">${rule.minAmount}</span>}
+                                {rule.maxAmount && <span className="mr-1">-${rule.maxAmount}</span>}
+                                → {rule.approvers || "?"}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Robots Summary */}
+                {steps.some(s => s.robot) && (
+                  <div className="bg-purple-50 rounded-xl border border-purple-200 p-4">
+                    <h3 className="font-semibold text-purple-900 mb-3">🤖 Robots</h3>
+                    <div className="space-y-2">
+                      {steps.filter(s => s.robot).map(step => (
+                        <div key={step.id} className="flex items-center gap-2 text-sm">
+                          <span className="text-purple-500">⚙️</span>
+                          <span className="text-purple-700">{ROBOTS[step.robot]?.name || step.robot}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </main>
+
+        {/* Emulator Modal */}
+        {showEmulator && (
+          <WorkflowEmulator 
+            steps={steps} 
+            workflowName={workflowName}
+            workflowType={workflowType}
+            onClose={() => setShowEmulator(false)} 
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Template Import Mode (placeholder)
+  if (mode === "template") {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-8">
+        <div className="max-w-lg text-center">
+          <div className="text-6xl mb-6">📊</div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-4">Template Import</h2>
+          <p className="text-slate-600 mb-6">Import workflow configuration from Excel template</p>
+          <button onClick={() => setMode(null)} className="px-6 py-3 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300">
+            ← Back to Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Questionnaire Mode (placeholder)
+  if (mode === "questionnaire") {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-8">
+        <div className="max-w-lg text-center">
+          <div className="text-6xl mb-6">📋</div>
+          <h2 className="text-2xl font-bold text-slate-900 mb-4">Questionnaire</h2>
+          <p className="text-slate-600 mb-6">Answer questions to generate your workflow</p>
+          <button onClick={() => setMode(null)} className="px-6 py-3 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300">
+            ← Back to Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+};
+
+// ============ WORKFLOW EMULATOR ============
+const WorkflowEmulator = ({ steps, workflowName, workflowType, onClose }) => {
+  const [currentStep, setCurrentStep] = useState(-1); // -1 = START
+  const [isRunning, setIsRunning] = useState(false);
+  const [log, setLog] = useState([]);
+  const [documentData, setDocumentData] = useState({
+    totalAmount: 15000,
+    department: "Engineering",
+    commodity: "IT Equipment",
+    status: "Submitted"
+  });
+
+  const allSteps = [
+    { name: "START", type: "start", description: "Document enters workflow" },
+    ...steps,
+    { name: "END", type: "end", description: "Workflow complete" }
+  ];
+
+  const addLog = (message, type = "info") => {
+    setLog(prev => [...prev, { time: new Date().toLocaleTimeString(), message, type }]);
+  };
+
+  const runSimulation = async () => {
+    setIsRunning(true);
+    setLog([]);
+    setCurrentStep(-1);
+
+    addLog(`🚀 Starting ${workflowName} simulation`, "success");
+    addLog(`📄 Document: Amount=$${documentData.totalAmount}, Dept=${documentData.department}`, "info");
+
+    await new Promise(r => setTimeout(r, 1000));
+    setCurrentStep(0);
+    addLog("▶️ START activity triggered", "info");
+
+    for (let i = 0; i < steps.length; i++) {
+      await new Promise(r => setTimeout(r, 1500));
+      setCurrentStep(i + 1);
+      
+      const step = steps[i];
+      addLog(`📍 Entering: ${step.name}`, "info");
+      
+      // Evaluate rule
+      let ruleResult = true;
+      if (step.rule && step.rule !== "true") {
+        // Simple rule evaluation for demo
+        if (step.rule.includes("TotalAmount()") && step.rule.includes(">=")) {
+          const threshold = parseInt(step.rule.match(/>=\s*(\d+)/)?.[1] || "0");
+          ruleResult = documentData.totalAmount >= threshold;
+          addLog(`   📊 Rule check: Amount ${documentData.totalAmount} >= ${threshold} → ${ruleResult ? "✅ PASS" : "⏭️ SKIP"}`, ruleResult ? "success" : "warning");
+        }
+      }
+
+      if (!ruleResult) {
+        addLog(`   ⏭️ Step skipped (rule not met)`, "warning");
+        continue;
+      }
+
+      // Process step
+      if (step.type === "automated") {
+        addLog(`   🤖 Robot executing: ${ROBOTS[step.robot]?.name || step.robot || "Unknown"}`, "info");
+        await new Promise(r => setTimeout(r, 800));
+        addLog(`   ✅ Robot completed successfully`, "success");
+      } else if (step.type === "notification") {
+        addLog(`   📧 Notification sent to approvers`, "info");
+      } else {
+        addLog(`   👤 Awaiting approval in folder: ${step.folder || "Dynamic"}`, "info");
+        await new Promise(r => setTimeout(r, 500));
+        addLog(`   ✅ Approved by: john.smith@company.com`, "success");
+      }
+    }
+
+    await new Promise(r => setTimeout(r, 1000));
+    setCurrentStep(steps.length + 1);
+    addLog("🏁 END activity reached", "success");
+    addLog("✨ Workflow completed successfully!", "success");
+    setIsRunning(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold">🎮 Workflow Simulator</h2>
+              <p className="text-purple-200 mt-1">{workflowName}</p>
+            </div>
+            <button onClick={onClose} className="text-white/80 hover:text-white text-2xl">×</button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-auto p-6">
+          <div className="grid lg:grid-cols-2 gap-6">
+            {/* Visual Flow */}
+            <div>
+              <h3 className="font-semibold text-slate-900 mb-4">📊 Workflow Progress</h3>
+              <div className="bg-slate-50 rounded-xl p-4 space-y-3">
+                {allSteps.map((step, idx) => (
+                  <div key={idx} className="flex items-center gap-4">
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold transition-all duration-500 ${
+                      idx < currentStep ? 'bg-green-500 scale-100' :
+                      idx === currentStep ? 'bg-blue-500 scale-110 animate-pulse-glow' :
+                      'bg-slate-300 scale-90'
+                    }`}>
+                      {idx < currentStep ? '✓' : 
+                       step.type === 'start' ? '▶' : 
+                       step.type === 'end' ? '■' : 
+                       step.type === 'automated' ? '🤖' : 
+                       step.type === 'notification' ? '📧' : '👤'}
+                    </div>
+                    <div className="flex-1">
+                      <div className={`font-medium ${idx === currentStep ? 'text-blue-600' : idx < currentStep ? 'text-green-600' : 'text-slate-400'}`}>
+                        {step.name}
+                      </div>
+                      <div className="text-xs text-slate-500">{step.description}</div>
+                    </div>
+                    {idx === currentStep && isRunning && (
+                      <div className="text-blue-500 animate-pulse">Processing...</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Log & Controls */}
+            <div>
+              <h3 className="font-semibold text-slate-900 mb-4">📜 Execution Log</h3>
+              <div className="bg-slate-900 rounded-xl p-4 h-64 overflow-auto font-mono text-sm">
+                {log.length === 0 ? (
+                  <div className="text-slate-500">Click "Run Simulation" to start...</div>
+                ) : (
+                  log.map((entry, i) => (
+                    <div key={i} className={`mb-1 ${
+                      entry.type === 'success' ? 'text-green-400' :
+                      entry.type === 'warning' ? 'text-amber-400' :
+                      entry.type === 'error' ? 'text-red-400' : 'text-slate-300'
+                    }`}>
+                      <span className="text-slate-500">[{entry.time}]</span> {entry.message}
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Test Data */}
+              <div className="mt-4 bg-slate-100 rounded-xl p-4">
+                <h4 className="font-medium text-slate-700 mb-3">📄 Test Document Data</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-slate-500">Total Amount</label>
+                    <input
+                      type="number"
+                      value={documentData.totalAmount}
+                      onChange={(e) => setDocumentData({...documentData, totalAmount: parseInt(e.target.value) || 0})}
+                      className="w-full px-3 py-2 border rounded-lg text-sm"
+                      disabled={isRunning}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500">Department</label>
+                    <input
+                      value={documentData.department}
+                      onChange={(e) => setDocumentData({...documentData, department: e.target.value})}
+                      className="w-full px-3 py-2 border rounded-lg text-sm"
+                      disabled={isRunning}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-slate-200 p-4 flex justify-between items-center bg-slate-50">
+          <div className="text-sm text-slate-500">
+            {currentStep >= 0 && currentStep <= steps.length && (
+              <span>Step {currentStep + 1} of {steps.length + 2}</span>
+            )}
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={() => { setCurrentStep(-1); setLog([]); }}
+              className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300"
+              disabled={isRunning}
+            >
+              Reset
+            </button>
+            <button
+              onClick={runSimulation}
+              className="px-6 py-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-lg hover:opacity-90 disabled:opacity-50"
+              disabled={isRunning}
+            >
+              {isRunning ? "Running..." : "▶️ Run Simulation"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Render
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

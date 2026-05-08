@@ -1,0 +1,51 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE ProcessDefinition SYSTEM "https://usertest.sciquest.com/app_docs/dtd/workflow/WorkflowDefinition.dtd">
+<ProcessDefinition>
+  <WorkflowType>contract</WorkflowType>
+  <WorkflowSubType>Approval</WorkflowSubType>
+  <Usable>true</Usable>
+  <Version>2</Version>
+  <VersionDescription>Initial Partner Contract Workflow</VersionDescription>
+  <!--====== Steps ======-->
+  <Step name="Compile File">
+    <Attribute name="wfActivityHelp">
+      <AttrValue lang="default">Compile File</AttrValue>
+    </Attribute>
+  </Step>
+  <Step name="ADW Approval">
+    <Attribute name="wfActivityHelp">
+      <AttrValue lang="default">ADW Approval</AttrValue>
+    </Attribute>
+  </Step>
+  <!--====== Activities ======-->
+  <Activity name="START">
+    <ActivityType>start</ActivityType>
+    <Rule />
+    <FolderSelectionRule>Dummy</FolderSelectionRule>
+  </Activity>
+  <Activity name="Compile File">
+    <ActivityType>automated</ActivityType>
+    <StepRef name="Compile File" />
+    <FolderRef name="Compile File" />
+    <Rule><![CDATA[true]]></Rule>
+    <FolderSelectionRule>ExplicitFolder</FolderSelectionRule>
+  </Activity>
+  <Activity name="ADW Approval">
+    <ActivityType>manual</ActivityType>
+    <StepRef name="ADW Approval" />
+    <Rule><![CDATA[Document.RequiresRuleGroupEvaluation("ADW Approval") == true]]></Rule>
+    <FolderSelectionRule>MultiElementDynamic</FolderSelectionRule>
+    <Attribute name="RuleGroupInternalName">
+      <AttrValue lang="default">ADW Approval</AttrValue>
+    </Attribute>
+  </Activity> 
+  <Activity name="END">
+    <ActivityType>end</ActivityType>
+    <Rule />
+    <FolderSelectionRule>Dummy</FolderSelectionRule>
+  </Activity>
+  <!--====== Activity relationships ======-->
+  <ActivityRelationship previous="START" next="Compile File" />
+  <ActivityRelationship previous="Compile File" next="ADW Approval" />
+  <ActivityRelationship previous="ADW Approval" next="END" />
+</ProcessDefinition>

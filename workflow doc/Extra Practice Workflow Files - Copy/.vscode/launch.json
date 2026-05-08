@@ -1,0 +1,14 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "chrome",
+            "request": "launch",
+            "name": "Open workflow-studio-v4.html",
+            "file": "c:\\Users\\lcosta\\OneDrive - Jaggaer - Corporate\\Documents\\GitHub\\Leo_repository\\jaggaer-workflow-studio\\workflow-studio-v4.html"
+        }
+    ]
+}
