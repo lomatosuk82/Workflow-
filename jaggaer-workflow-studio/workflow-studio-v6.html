@@ -2215,43 +2215,72 @@ const App = () => {
 
   // Load default template for workflow type
   const loadDefaultTemplate = (wfType) => {
+    console.log("Loading template for:", wfType);
     const template = DEFAULT_TEMPLATES[wfType];
+    console.log("Template found:", template);
     if (template) {
       // Load steps with unique IDs
+      const timestamp = Date.now();
       const loadedSteps = template.steps.map((step, idx) => ({
-        ...step,
-        id: Date.now() + idx,
-        flags: step.flags || [],
-        robot: step.robot || "",
+        id: timestamp + idx,
+        name: step.name || `Step ${idx + 1}`,
+        activityName: step.activityName || step.name?.replace(/\s+/g, '') || `Step${idx + 1}`,
+        activityType: step.activityType || "manual",
+        folderRule: step.folderRule || "Dummy",
         folder: step.folder || "",
+        robot: step.robot || "",
         ruleGroup: step.ruleGroup || "",
+        rule: step.rule || "true",
+        helpText: step.helpText || "",
         supportNote: step.supportNote || "",
-        customFieldName: "",
-        skipIfNoApprovers: false
+        flags: step.flags || [],
+        customFieldName: step.customFieldName || "",
+        skipIfNoApprovers: step.skipIfNoApprovers || false,
+        iconUrl: step.iconUrl || ""
       }));
+      console.log("Loaded steps:", loadedSteps);
       setSteps(loadedSteps);
 
       // Load folders with unique IDs
-      const loadedFolders = template.folders.map((folder, idx) => ({
-        ...folder,
-        id: Date.now() + 1000 + idx,
+      const loadedFolders = (template.folders || []).map((folder, idx) => ({
+        id: timestamp + 1000 + idx,
+        name: folder.name || `Folder ${idx + 1}`,
+        folderType: folder.folderType || "shared",
+        robot: folder.robot || "",
+        description: folder.description || "",
+        approvers: folder.approvers || "",
         workflowType: wfType
       }));
+      console.log("Loaded folders:", loadedFolders);
       setFolders(loadedFolders);
 
       // Load rule groups with unique IDs
-      const loadedRuleGroups = template.ruleGroups.map((group, idx) => ({
-        ...group,
-        id: Date.now() + 2000 + idx,
+      const loadedRuleGroups = (template.ruleGroups || []).map((group, idx) => ({
+        id: timestamp + 2000 + idx,
+        name: group.name || `Rule Group ${idx + 1}`,
+        description: group.description || "",
         rules: (group.rules || []).map((rule, rIdx) => ({
-          ...rule,
-          id: Date.now() + 3000 + idx * 100 + rIdx
+          id: timestamp + 3000 + idx * 100 + rIdx,
+          departments: rule.departments || "",
+          minAmount: rule.minAmount || "",
+          maxAmount: rule.maxAmount || "",
+          commodityCodes: rule.commodityCodes || "",
+          glAccounts: rule.glAccounts || "",
+          companyCodes: rule.companyCodes || "",
+          approvers: rule.approvers || "",
+          conditionLogic: rule.conditionLogic || "AND",
+          customExpression: rule.customExpression || "",
+          customFields: rule.customFields || {}
         }))
       }));
+      console.log("Loaded rule groups:", loadedRuleGroups);
       setRuleGroups(loadedRuleGroups);
 
       setTemplateLoaded(true);
       setSelectedStep(null);
+      console.log("Template loaded successfully!");
+    } else {
+      console.error("No template found for workflow type:", wfType);
     }
   };
 
