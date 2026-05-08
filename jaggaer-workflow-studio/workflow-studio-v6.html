@@ -2893,11 +2893,9 @@ const App = () => {
               {DEFAULT_TEMPLATES[workflowType] ? (
                 <button 
                   onClick={() => {
-                    if (steps.length > 0) {
-                      if (window.confirm("This will replace all current steps, folders, and rule groups with the standard template. Continue?")) {
-                        loadDefaultTemplate(workflowType);
-                      }
-                    } else {
+                    const shouldLoad = steps.length === 0 || window.confirm("This will replace all current steps, folders, and rule groups with the standard template. Continue?");
+                    if (shouldLoad) {
+                      console.log("Loading template for type:", workflowType);
                       loadDefaultTemplate(workflowType);
                     }
                   }}
